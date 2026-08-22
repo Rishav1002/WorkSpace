@@ -1,0 +1,3312 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" class="dark scroll-smooth antialiased">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#09090b">
+<title>Student Workspace | Academic Suite</title>
+<meta name="description" content="Academic dashboard, timetable, tasks, exams, and attendance tracker.">
+
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="profile.jpg">
+
+<script>
+  'use strict';
+  if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(err => console.warn('PWA SW deferred', err));
+    });
+  }
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['IBM Plex Sans', 'system-ui', 'sans-serif'],
+          display: ['Space Grotesk', 'system-ui', 'sans-serif'],
+          mono: ['IBM Plex Mono', 'monospace'],
+        },
+        colors: {
+          background: 'var(--background)',
+          surface: 'var(--surface)',
+          surfaceHover: 'var(--surface-hover)',
+          border: 'var(--border)',
+          muted: 'var(--muted)',
+          primary: 'var(--primary)',
+          brand: 'var(--brand)',
+        },
+        boxShadow: {
+          subtle: '0 1px 3px 0 rgba(0,0,0,0.04), 0 1px 2px 0 rgba(0,0,0,0.02)',
+          float: '0 12px 30px -4px rgba(0,0,0,0.08), 0 4px 12px -2px rgba(0,0,0,0.04)',
+          'float-dark': '0 16px 36px -4px rgba(0,0,0,0.55), 0 6px 16px -2px rgba(0,0,0,0.35)',
+          glow: '0 0 28px -4px var(--glow-color)',
+        },
+        animation: {
+          'fade-in': 'fadeIn 0.25s cubic-bezier(0.16,1,0.3,1) forwards',
+          'slide-up': 'slideUp 0.3s cubic-bezier(0.16,1,0.3,1) forwards',
+        },
+        keyframes: {
+          fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+          slideUp: { '0%': { opacity: '0', transform: 'translateY(8px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+        },
+      },
+    },
+  };
+</script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
+
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    color-scheme: light;
+    --background: #fcfcfd;
+    --surface: #ffffff;
+    --surface-hover: #f4f4f7;
+    --border: #e4e4e9;
+    --muted: #71717a;
+    --primary: #18181b;
+    --brand: #4f46e5;
+    --brand-solid: #4f46e5;
+    --grid-pattern: rgba(0, 0, 0, 0.03);
+    --glow-color: transparent;
+    --sticky-shadow: 2px 0 6px rgba(0,0,0,0.04);
+    --tl-marker-size: 32px;
+    --tl-connector-left: 15px;
+  }
+
+  html.dark {
+    color-scheme: dark;
+    --background: #09090b;
+    --surface: #121215;
+    --surface-hover: #19191e;
+    --border: #27272e;
+    --muted: #a1a1aa;
+    --primary: #f4f4f6;
+    --brand: #818cf8;
+    --brand-solid: #4f46e5;
+    --grid-pattern: rgba(255, 255, 255, 0.025);
+    --sticky-shadow: 2px 0 6px rgba(0,0,0,0.5);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--primary);
+    background-image: radial-gradient(var(--grid-pattern) 1.2px, transparent 1.2px);
+    background-size: 24px 24px;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 90px);
+    overflow-x: hidden;
+  }
+
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  main:focus { outline: none; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  ::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }
+  ::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+  html.dark ::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+
+  .view-section { display: none; opacity: 0; }
+  .view-section.active { display: block; opacity: 1; animation: slideUp 0.25s ease-out forwards; }
+  
+  .nav-btn { color: var(--muted); transition: color 0.2s ease, transform 0.15s ease; }
+  .nav-btn.nav-active { color: var(--primary) !important; font-weight: 700; }
+  .nav-btn.nav-active i { color: var(--primary) !important; }
+  .nav-btn.nav-active span { color: var(--primary) !important; }
+  .nav-btn.nav-active::after { 
+    content: ''; 
+    position: absolute; 
+    top: -6px; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    width: 22px; 
+    height: 3px; 
+    background-color: var(--brand); 
+    border-radius: 9999px; 
+  }
+
+  .card { 
+    background: var(--surface); 
+    border: 1px solid var(--border); 
+    border-radius: 1rem; 
+    box-shadow: var(--subtle);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+  }
+
+  .card-hoverable:hover {
+    transform: translateY(-2px);
+    border-color: var(--brand);
+    box-shadow: var(--float);
+  }
+  html.dark .card-hoverable:hover { box-shadow: var(--float-dark); }
+  
+  .skeleton { background: linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; border-radius: 6px; }
+  @keyframes skeleton-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  dialog::backdrop { background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); }
+  dialog[open] { animation: slideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; display: flex; flex-direction: column; }
+  
+  .tl-connector { width: 2px; background: var(--border); position: absolute; left: calc(var(--tl-connector-left) + (var(--tl-marker-size) / 2) - 1px); top: 30px; bottom: -20px; z-index: 0; }
+  .tl-marker { width: var(--tl-marker-size); height: var(--tl-marker-size); border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10; border: 4px solid var(--background); margin-left: calc(var(--tl-connector-left) * -1 - 6px); }
+
+  @media (min-width: 640px) { :root { --tl-connector-left: 23px; } }
+
+  .table-container { overflow-x: auto; padding-bottom: 8px; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 850px; }
+  th, td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); position: relative; }
+  th { background: var(--surface); color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 12px; }
+  td { padding: 10px; vertical-align: top; font-size: 12px; }
+  th:first-child, td:first-child { position: sticky; left: 0; z-index: 10; background: var(--surface); color: var(--muted); font-weight: 600; text-align: center; vertical-align: middle; box-shadow: var(--sticky-shadow); }
+  th:last-child, td:last-child { border-right: none; }
+  tr:last-child td { border-bottom: none; }
+
+  header.sticky { padding-top: max(0.75rem, env(safe-area-inset-top, 0px)); }
+  main#main-content { width: 100%; max-width: 960px; margin-left: auto; margin-right: auto; padding-left: max(1rem, env(safe-area-inset-left, 16px)); padding-right: max(1rem, env(safe-area-inset-right, 16px)); padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px)); touch-action: pan-y; }
+  nav.fixed { padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)); }
+  #toast-container { top: calc(1rem + env(safe-area-inset-top, 0px)); right: max(1rem, env(safe-area-inset-right, 16px)); left: max(1rem, env(safe-area-inset-left, 16px)); max-width: calc(100% - 32px); margin-left: auto; margin-right: auto; }
+</style>
+</head>
+<body class="font-sans antialiased">
+
+<a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-surface focus:text-primary rounded-br-2xl shadow-float">Skip to main content</a>
+
+<header class="sticky top-0 z-40 bg-background/85 backdrop-blur-xl border-b border-border transition-colors">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex justify-between items-center h-16">
+    <div class="flex items-center gap-3">
+      <div class="relative w-10 h-10 rounded-2xl border border-border shadow-sm flex items-center justify-center bg-brand text-white font-display font-bold text-base overflow-hidden shrink-0">
+        <span aria-hidden="true">R</span>
+        <img src="profile.jpg" alt="Rishav" class="absolute inset-0 w-full h-full object-cover object-center" onerror="this.style.display='none'">
+      </div>
+      <div class="flex flex-col">
+        <h1 class="font-display text-sm sm:text-base font-bold tracking-tight text-primary leading-none">Rishav's Workspace</h1>
+        <span class="text-[11px] font-mono font-medium text-muted mt-1" id="header-date">Initializing...</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button type="button" id="btn-search" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible" aria-label="Search">
+        <i class="fa-solid fa-magnifying-glass text-sm"></i>
+      </button>
+      <div class="relative">
+        <button type="button" id="btn-notif" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all relative focus-visible" aria-label="Notifications Center">
+          <i class="fa-solid fa-bell text-sm"></i>
+          <span id="notif-badge" class="absolute top-2 right-2 w-2 h-2 rounded-full bg-rose-500 hidden animate-pulse"></span>
+        </button>
+      </div>
+      <div class="w-px h-4 bg-border mx-1"></div>
+      <button type="button" id="btn-sync-settings" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible" aria-label="Sync Settings">
+        <i class="fa-solid fa-cloud-arrow-up text-sm" id="sync-status-icon"></i>
+      </button>
+      <button type="button" id="btn-theme" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible" aria-label="Toggle Theme">
+        <i class="fa-solid fa-moon dark:hidden"></i>
+        <i class="fa-solid fa-sun hidden dark:block text-amber-400"></i>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main-content" tabindex="-1" class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+
+  <!-- TAB: TODAY -->
+  <section id="tab-today" class="view-section active space-y-6" role="tabpanel">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+      <article class="lg:col-span-3 flex flex-col gap-2">
+        <div id="card-now" class="card rounded-2xl card-hoverable p-6 sm:p-7 relative overflow-hidden group min-h-[220px] flex flex-col justify-center transition-all shadow-subtle">
+          <div class="skeleton h-6 w-24 mb-4"></div>
+          <div class="skeleton h-10 w-3/4 mb-4"></div>
+          <div class="skeleton h-6 w-48"></div>
+        </div>
+      </article>
+
+      <article class="lg:col-span-2 flex flex-col gap-2">
+        <div id="card-next" class="card rounded-2xl card-hoverable p-5 flex-1 flex flex-col relative overflow-hidden transition-all shadow-subtle">
+           <div class="skeleton h-4 w-16 mb-3"></div>
+           <div class="skeleton h-6 w-full mb-3"></div>
+           <div class="skeleton h-4 w-24"></div>
+        </div>
+      </article>
+    </div>
+
+    <section aria-label="Progress Statistics" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="card rounded-2xl card-hoverable p-4 flex flex-col justify-between transition-all shadow-subtle cursor-pointer" onclick="View.switchTab('analytics')">
+        <span class="text-[11px] font-mono text-muted uppercase tracking-wider mb-2">Overall Att.</span>
+        <span id="stat-att-global" class="font-display text-2xl font-bold text-primary">--%</span>
+      </div>
+      <div class="card rounded-2xl card-hoverable p-4 flex flex-col justify-between transition-all shadow-subtle cursor-pointer" onclick="View.switchTab('analytics')">
+        <span class="text-[11px] font-mono text-muted uppercase tracking-wider mb-2">Safe to Miss</span>
+        <span id="stat-safe-miss" class="font-display text-2xl font-bold text-emerald-500">--</span>
+      </div>
+      <div class="card rounded-2xl card-hoverable p-4 flex flex-col justify-between md:col-span-2 shadow-subtle">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-[11px] font-mono text-muted uppercase tracking-wider">Semester Progress</span>
+          <span id="stat-sem-week" class="text-[11px] font-mono text-primary font-bold">Week --</span>
+        </div>
+        <div class="w-full bg-background rounded-full h-1.5 border border-border overflow-hidden">
+          <div id="stat-sem-bar" class="bg-brand h-full transition-all duration-1000 w-0"></div>
+        </div>
+        <p id="stat-sem-days" class="text-[11px] text-muted mt-2 text-right font-mono">-- days remaining</p>
+      </div>
+    </section>
+
+    <article class="space-y-2">
+      <header class="flex justify-between items-center px-1">
+        <h2 class="font-mono text-[11px] font-bold tracking-widest uppercase text-muted">Later Today</h2>
+        <span id="stat-classes-left" class="text-[11px] font-mono text-primary font-bold">-- left</span>
+      </header>
+      <div id="list-later" class="card rounded-2xl p-2 divide-y divide-border shadow-subtle">
+         <div class="p-4 text-sm text-muted skeleton h-12 w-full rounded-none border-0"></div>
+      </div>
+    </article>
+    
+    <section class="space-y-2">
+      <header class="flex justify-between items-center px-1">
+        <h2 class="font-mono text-[11px] font-bold tracking-widest uppercase text-muted">Hostel & Routine</h2>
+      </header>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <article id="hostel-now-card" class="card rounded-2xl card-hoverable p-6 relative overflow-hidden text-white shadow-glow group cursor-pointer" onclick="View.switchTab('hostel')" style="background-color: var(--brand-solid); --glow-color: var(--brand);">
+          <i class="fa-solid fa-utensils absolute -right-8 -bottom-8 opacity-10 text-9xl transform -rotate-12 transition-transform duration-700 group-hover:scale-110 group-hover:-rotate-6"></i>
+          <div class="relative z-10 flex flex-col h-full">
+            <div id="hostel-meal-header-container" class="flex flex-wrap items-center justify-between gap-2.5 mb-3"></div>
+            <h3 id="hostel-next-title" class="font-display text-2xl font-bold leading-tight mb-3 text-white tracking-tight">Loading...</h3>
+            <div id="hostel-next-menu" class="text-sm leading-snug mt-auto">--</div>
+          </div>
+        </article>
+        <article class="card rounded-2xl card-hoverable p-5 shadow-subtle flex flex-col relative overflow-hidden cursor-pointer" onclick="View.switchTab('hostel')">
+          <h3 class="text-sm font-bold text-primary border-b border-border pb-3 mb-3 flex justify-between items-center">
+            <span>Laundry Routine</span>
+            <i class="fa-solid fa-shirt text-brand"></i>
+          </h3>
+          <div class="text-sm text-muted mb-3 font-medium"><div id="hostel-laundry-today-summary">Loading...</div></div>
+          <p class="text-[11px] font-mono text-muted/70 mt-auto border-t border-border pt-2">Ajit Kumar: <a href="tel:+919622600130" class="underline text-brand font-bold" onclick="event.stopPropagation()">9622600130</a></p>
+        </article>
+      </div>
+    </section>
+  </section>
+
+  <!-- TAB: SCHEDULE -->
+  <section id="tab-schedule" class="view-section space-y-6" role="tabpanel">
+    <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <h2 class="font-display text-2xl font-bold text-primary">Master Schedule</h2>
+      <div class="flex items-center gap-2.5 w-full sm:w-auto">
+        <div class="relative flex-1 sm:w-64">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-muted text-xs"></i>
+          <input type="text" id="search-schedule" placeholder="Search course, room..." class="w-full bg-surface border border-border rounded-xl pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-brand">
+        </div>
+        <div class="flex bg-surface border border-border rounded-xl p-0.5 font-mono text-[11px] font-bold shadow-subtle" role="tablist">
+          <button type="button" id="toggle-timeline" class="px-3 py-1.5 rounded-xl bg-primary text-background shadow-sm transition-all" role="tab" aria-selected="true">Timeline</button>
+          <button type="button" id="toggle-grid" class="px-3 py-1.5 rounded-xl text-muted hover:text-primary transition-all" role="tab" aria-selected="false">Grid</button>
+        </div>
+      </div>
+    </header>
+
+    <div id="schedule-legend" class="flex flex-wrap gap-2 text-[11px] font-mono font-bold"></div>
+    <div id="schedule-timeline" class="space-y-6 pb-4 animate-fade-in"></div>
+
+    <div id="schedule-grid" class="hidden card rounded-2xl p-2 overflow-hidden animate-fade-in shadow-subtle">
+      <div class="table-container p-2">
+        <table id="dynamic-grid" class="w-full text-left"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB: TASKS & HOMEWORKS -->
+  <section id="tab-tasks" class="view-section space-y-6" role="tabpanel">
+    <header class="flex items-center justify-between gap-4">
+      <h2 class="font-display text-2xl font-bold text-primary">Tasks & Homework</h2>
+      <button type="button" id="btn-add-task" class="px-3.5 py-2 text-xs font-bold text-white bg-brand hover:opacity-90 active:scale-95 rounded-xl transition-all shadow-subtle flex items-center gap-1.5">
+        <i class="fa-solid fa-plus text-xs"></i> New Task
+      </button>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="card rounded-2xl p-4 flex flex-col justify-between">
+        <span class="text-[11px] font-mono text-muted uppercase tracking-wider">Pending Tasks</span>
+        <span id="stat-tasks-pending" class="font-display text-2xl font-bold text-amber-500">0</span>
+      </div>
+      <div class="card rounded-2xl p-4 flex flex-col justify-between">
+        <span class="text-[11px] font-mono text-muted uppercase tracking-wider">Due This Week</span>
+        <span id="stat-tasks-due-soon" class="font-display text-2xl font-bold text-rose-500">0</span>
+      </div>
+      <div class="card rounded-2xl p-4 flex flex-col justify-between">
+        <span class="text-[11px] font-mono text-muted uppercase tracking-wider">Completed</span>
+        <span id="stat-tasks-completed" class="font-display text-2xl font-bold text-emerald-500">0</span>
+      </div>
+    </div>
+
+    <div class="card rounded-2xl p-4 shadow-subtle space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+        <div class="flex gap-1.5">
+          <button type="button" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-primary text-background filter-task-btn" data-filter="all">All</button>
+          <button type="button" class="px-3 py-1.5 rounded-xl text-xs font-bold text-muted hover:bg-surface-hover filter-task-btn" data-filter="pending">Pending</button>
+          <button type="button" class="px-3 py-1.5 rounded-xl text-xs font-bold text-muted hover:bg-surface-hover filter-task-btn" data-filter="completed">Completed</button>
+        </div>
+        <span class="text-xs text-muted font-mono" id="tasks-count-info">0 entries</span>
+      </div>
+      <div id="tasks-container" class="space-y-3"></div>
+    </div>
+  </section>
+
+  <!-- TAB: ANALYTICS / HUB -->
+  <section id="tab-analytics" class="view-section space-y-6" role="tabpanel">
+    <header class="flex flex-wrap justify-between items-center gap-2">
+      <h2 class="font-display text-2xl font-bold text-primary">Analytics & Hub</h2>
+      <div class="flex items-center gap-2">
+        <button type="button" id="btn-manage-holidays" class="px-3 py-1.5 text-xs font-bold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 active:scale-95 rounded-xl transition-all border border-rose-500/20 flex items-center gap-1.5">
+          <i class="fa-solid fa-calendar-days text-xs"></i> Exceptions & Tests
+        </button>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+      <!-- CALENDAR WIDGET -->
+      <article class="md:col-span-2 card rounded-2xl p-5 flex flex-col shadow-subtle">
+        <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-border">
+          <h3 class="text-sm font-bold text-primary flex items-center gap-2">
+            <i class="fa-regular fa-calendar-check text-brand"></i>
+            Monthly Overview
+          </h3>
+          <div class="flex items-center gap-1 self-start sm:self-auto bg-background border border-border p-1 rounded-xl shadow-subtle">
+            <button type="button" id="btn-hub-cal-prev" class="w-7 h-7 rounded-xl hover:bg-surface-hover flex items-center justify-center text-primary" aria-label="Previous Month"><i class="fa-solid fa-chevron-left text-xs"></i></button>
+            <span id="hub-cal-month" class="text-xs font-bold font-mono px-2 text-primary tracking-wide">Month Year</span>
+            <button type="button" id="btn-hub-cal-next" class="w-7 h-7 rounded-xl hover:bg-surface-hover flex items-center justify-center text-primary" aria-label="Next Month"><i class="fa-solid fa-chevron-right text-xs"></i></button>
+          </div>
+        </header>
+        
+        <div class="grid grid-cols-7 gap-1.5 text-center text-[11px] font-mono font-bold text-muted mb-2">
+          <div>SUN</div><div>MON</div><div>TUE</div><div>WED</div><div>THU</div><div>FRI</div><div>SAT</div>
+        </div>
+        <div id="hub-attendance-calendar" class="grid grid-cols-7 gap-1.5 text-xs flex-1 w-full"></div>
+        
+        <footer class="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 text-[11px] font-mono text-muted border-t border-border">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Attended</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Missed</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Holiday</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> Exam</span>
+            </div>
+            <span class="text-[10px] text-muted">Click date for details</span>
+        </footer>
+      </article>
+      
+      <!-- UPCOMING TESTS & DEADLINES -->
+      <div class="flex flex-col gap-4">
+        <article class="card rounded-2xl card-hoverable p-4 flex flex-col justify-center gap-3 shadow-subtle cursor-pointer">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-[11px] font-mono text-muted uppercase tracking-wider">Highest Attendance</p>
+              <i class="fa-solid fa-arrow-trend-up text-emerald-500 text-xs"></i>
+            </div>
+            <p id="stat-best-subject" class="text-sm font-bold text-emerald-500 truncate">--</p>
+          </div>
+          <hr class="border-border">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-[11px] font-mono text-muted uppercase tracking-wider">Lowest Attendance</p>
+              <i class="fa-solid fa-triangle-exclamation text-rose-500 text-xs"></i>
+            </div>
+            <p id="stat-worst-subject" class="text-sm font-bold text-rose-500 truncate">--</p>
+          </div>
+        </article>
+
+        <article class="card rounded-2xl card-hoverable p-4 shadow-subtle flex flex-col flex-1 min-h-[300px]">
+          <h3 class="text-sm font-bold text-primary mb-3 flex items-center justify-between">
+            <span>Upcoming Schedules & Tests</span>
+            <i class="fa-solid fa-stopwatch text-brand text-xs"></i>
+          </h3>
+          <div id="deadlines-list" class="space-y-2 flex-1 overflow-y-auto pr-0.5"></div>
+        </article>
+      </div>
+    </div>
+
+    <!-- COURSE CARDS WITH DROPDOWNS -->
+    <div id="hub-courses" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </section>
+
+  <!-- TAB: HOSTEL -->
+  <section id="tab-hostel" class="view-section space-y-6" role="tabpanel">
+    <header class="flex flex-col gap-1">
+      <h2 class="font-display text-2xl font-bold text-primary">Hostel & Mess Schedule</h2>
+    </header>
+
+    <!-- WEEKLY MENU CARD -->
+    <article class="card rounded-2xl p-5 shadow-subtle flex flex-col">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4 mb-4">
+        <div>
+          <h3 class="text-base font-bold text-primary">Weekly Mess Menu</h3>
+          <p class="text-xs text-muted">Select any day to preview scheduled meal courses</p>
+        </div>
+        <div id="hostel-day-selector" class="flex flex-wrap gap-1 bg-background p-1 rounded-xl border border-border"></div>
+      </div>
+      <div id="hostel-menu-active-day" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm"></div>
+    </article>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <article class="card rounded-2xl card-hoverable p-5 shadow-subtle flex flex-col">
+        <div class="flex justify-between items-center border-b border-border pb-3 mb-3">
+          <h3 class="text-sm font-bold text-primary">Operating Hours</h3>
+          <div class="flex bg-surface border border-border rounded-xl p-0.5 font-mono text-[11px] font-bold shadow-subtle">
+            <button type="button" id="timing-btn-regular" class="px-2.5 py-1 rounded-xl bg-primary text-background shadow-sm transition-all focus-visible">Regular</button>
+            <button type="button" id="timing-btn-weekend" class="px-2.5 py-1 rounded-xl text-muted hover:text-primary transition-all focus-visible">Weekend</button>
+          </div>
+        </div>
+        <ul id="hostel-timings" class="text-sm text-muted space-y-2 font-medium"></ul>
+      </article>
+
+      <article class="card rounded-2xl card-hoverable p-5 shadow-subtle flex flex-col relative overflow-hidden">
+        <div class="flex justify-between items-center border-b border-border pb-3 mb-3">
+          <h3 class="text-sm font-bold text-primary">Laundry Schedule (Einstein Hall)</h3>
+          <i class="fa-solid fa-shirt text-brand"></i>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <div class="rounded-xl bg-brand/10 border border-brand/15 p-3 hover:bg-brand/15 transition-colors">
+            <p class="text-[10px] font-mono uppercase tracking-wider text-muted mb-1">Monday</p>
+            <p class="text-xs font-bold text-brand">4:00 – 6:00 PM</p>
+          </div>
+          <div class="rounded-xl bg-brand/10 border border-brand/15 p-3 hover:bg-brand/15 transition-colors">
+            <p class="text-[10px] font-mono uppercase tracking-wider text-muted mb-1">Thursday</p>
+            <p class="text-xs font-bold text-brand">4:00 – 6:00 PM</p>
+          </div>
+        </div>
+        <div id="hostel-laundry-hostel-tab" class="text-xs text-muted font-medium mb-3">Loading...</div>
+        <p class="text-[11px] font-mono text-muted/80 border-t border-border pt-3 mt-auto">
+          Manager: <span class="font-bold text-primary">Ajit Kumar</span> ·
+          <a href="tel:+919622600130" class="underline text-brand font-bold hover:opacity-80 transition-opacity">9622600130</a>
+        </p>
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<!-- BOTTOM NAVIGATION -->
+<nav class="fixed bottom-0 w-full bg-background/90 backdrop-blur-xl border-t border-border z-50 transition-colors" aria-label="Bottom Navigation">
+  <div class="max-w-md mx-auto flex justify-between px-4 py-2" role="tablist">
+    <button type="button" id="nav-today" class="nav-btn nav-active flex-1 max-w-[70px] flex flex-col items-center justify-center gap-1 transition-all h-12 relative rounded-xl hover:bg-surface-hover active:scale-95 focus-visible" data-target="tab-today" role="tab" aria-selected="true">
+      <i class="fa-solid fa-bolt text-base mb-0.5"></i>
+      <span class="text-[11px] font-bold tracking-wide">Today</span>
+    </button>
+    <button type="button" id="nav-schedule" class="nav-btn flex-1 max-w-[70px] flex flex-col items-center justify-center gap-1 transition-all h-12 relative rounded-xl hover:bg-surface-hover active:scale-95 focus-visible" data-target="tab-schedule" role="tab" aria-selected="false">
+      <i class="fa-solid fa-calendar-week text-base mb-0.5"></i>
+      <span class="text-[11px] font-bold tracking-wide">Schedule</span>
+    </button>
+    <button type="button" id="nav-tasks" class="nav-btn flex-1 max-w-[70px] flex flex-col items-center justify-center gap-1 transition-all h-12 relative rounded-xl hover:bg-surface-hover active:scale-95 focus-visible" data-target="tab-tasks" role="tab" aria-selected="false">
+      <i class="fa-solid fa-list-check text-base mb-0.5"></i>
+      <span class="text-[11px] font-bold tracking-wide">Tasks</span>
+    </button>
+    <button type="button" id="nav-hub" class="nav-btn flex-1 max-w-[70px] flex flex-col items-center justify-center gap-1 transition-all h-12 relative rounded-xl hover:bg-surface-hover active:scale-95 focus-visible" data-target="tab-analytics" role="tab" aria-selected="false">
+      <i class="fa-solid fa-layer-group text-base mb-0.5"></i>
+      <span class="text-[11px] font-bold tracking-wide">Hub</span>
+    </button>
+    <button type="button" id="nav-hostel" class="nav-btn flex-1 max-w-[70px] flex flex-col items-center justify-center gap-1 transition-all h-12 relative rounded-xl hover:bg-surface-hover active:scale-95 focus-visible" data-target="tab-hostel" role="tab" aria-selected="false">
+      <i class="fa-solid fa-bed text-base mb-0.5"></i>
+      <span class="text-[11px] font-bold tracking-wide">Hostel</span>
+    </button>
+  </div>
+</nav>
+
+<!-- MODAL: NOTIFICATION CENTER -->
+<dialog id="modal-notif-center" aria-modal="true" class="bg-transparent p-4 w-full max-w-md m-auto border-none shadow-none">
+  <div class="bg-surface border border-border rounded-2xl shadow-float-dark w-full overflow-hidden flex flex-col mx-auto">
+    <header class="p-4 border-b border-border flex justify-between items-center">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center text-sm"><i class="fa-solid fa-bell"></i></div>
+        <h3 class="font-display font-bold text-base text-primary">Notifications</h3>
+      </div>
+      <div class="flex items-center gap-1">
+        <button type="button" id="btn-clear-notifs" class="text-xs text-rose-500 hover:text-rose-600 px-2 py-1 rounded-lg font-bold hover:bg-rose-500/10 transition-colors">Clear</button>
+        <button type="button" id="btn-close-notif-center" class="w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center text-muted hover:text-primary transition-colors focus-visible" aria-label="Close">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+    </header>
+    <div class="p-4 space-y-2.5 max-h-96 overflow-y-auto" id="notif-center-list"></div>
+  </div>
+</dialog>
+
+<!-- MODAL: TASK / HOMEWORK -->
+<dialog id="modal-task" aria-modal="true" class="bg-transparent p-4 w-full max-w-md m-auto border-none shadow-none">
+  <div class="bg-surface border border-border rounded-2xl shadow-float-dark w-full flex flex-col mx-auto">
+    <header class="p-4 border-b border-border flex justify-between items-center rounded-t-2xl bg-surface">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center text-sm"><i class="fa-solid fa-list-check"></i></div>
+        <h3 id="task-modal-title" class="font-display font-bold text-base text-primary">New Task</h3>
+      </div>
+      <button type="button" id="btn-close-task" class="w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center text-muted hover:text-rose-500 transition-colors focus-visible" aria-label="Close">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </header>
+    <form id="form-add-task" class="p-4 space-y-3.5 bg-surface rounded-b-2xl">
+      <div>
+        <label for="task-course" class="block text-xs font-bold text-muted uppercase tracking-wider mb-1">Subject / Course</label>
+        <select id="task-course" required class="custom-select sr-only" tabindex="-1"></select>
+      </div>
+      <div>
+        <label for="task-title" class="block text-xs font-bold text-muted uppercase tracking-wider mb-1">Task Title</label>
+        <input type="text" id="task-title" placeholder="e.g., Assignment 1: OOPs and Trees" required class="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary focus:outline-none focus:ring-1 focus:ring-brand">
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="block text-xs font-bold text-muted uppercase tracking-wider">Due Date</label>
+          <button type="button" id="btn-task-auto-date" class="text-[10px] font-bold text-brand bg-brand/10 hover:bg-brand/20 px-2 py-0.5 rounded-lg transition-colors border border-brand/20">Next Class</button>
+        </div>
+        <div class="relative w-full">
+          <input type="date" id="task-duedate" required class="sr-only" tabindex="-1">
+          <button type="button" id="btn-task-duedate" class="datepicker-trigger w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary focus:outline-none focus:ring-1 focus:ring-brand font-mono flex justify-between items-center" onclick="DatePicker.open('task-duedate', 'label-task-duedate')">
+            <span id="label-task-duedate">Select Date</span>
+            <i class="fa-regular fa-calendar text-brand pointer-events-none"></i>
+          </button>
+        </div>
+      </div>
+      <button type="submit" class="w-full py-2.5 bg-brand text-white rounded-xl text-xs font-bold hover:opacity-90 active:scale-[0.99] transition-all mt-2">Save Task</button>
+    </form>
+  </div>
+</dialog>
+
+<!-- MODAL: HOLIDAY & EXAM MANAGER -->
+<dialog id="modal-holidays" aria-modal="true" class="bg-transparent p-4 w-full max-w-md m-auto border-none shadow-none" aria-labelledby="holiday-modal-title">
+  <div class="bg-surface border border-border rounded-2xl shadow-float-dark w-full flex flex-col mx-auto">
+    <header class="p-4 border-b border-border flex justify-between items-center rounded-t-2xl bg-surface">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center text-sm"><i class="fa-solid fa-calendar-days"></i></div>
+        <h3 id="holiday-modal-title" class="font-display font-bold text-base text-primary">Manage Exceptions</h3>
+      </div>
+      <button type="button" id="btn-close-holidays" class="w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center text-muted hover:text-rose-500 transition-colors focus-visible" aria-label="Close">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </header>
+    <div class="p-4 space-y-4 bg-surface rounded-b-2xl">
+      <form id="form-add-holiday" class="space-y-3 bg-background/50 p-3 rounded-xl border border-border">
+        <div class="flex justify-between items-center">
+          <p id="holiday-form-mode-title" class="text-xs font-bold text-primary">Add Exception or Test</p>
+          <button type="button" id="btn-cancel-edit-holiday" class="hidden text-[10px] text-muted hover:text-rose-500 font-bold">Cancel</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div class="relative w-full h-full">
+            <input type="date" id="input-holiday-date" required class="sr-only" tabindex="-1">
+            <button type="button" id="btn-holiday-date" class="datepicker-trigger w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:ring-1 focus:ring-brand font-mono flex justify-between items-center h-full min-h-[34px]" onclick="DatePicker.open('input-holiday-date', 'label-holiday-date')">
+              <span id="label-holiday-date" class="truncate pr-1">Select Date</span>
+              <i class="fa-regular fa-calendar text-brand shrink-0 pointer-events-none"></i>
+            </button>
+          </div>
+          <select id="input-holiday-type" class="custom-select sr-only" tabindex="-1">
+            <option value="holiday">Holiday (Off)</option>
+            <option value="exam">Exam / Test</option>
+          </select>
+        </div>
+
+        <div id="exam-extra-fields" class="space-y-2 hidden">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+             <select id="input-exam-category" class="custom-select sr-only" tabindex="-1">
+              <option value="FAT">FAT</option>
+              <option value="SAT">SAT</option>
+              <option value="Final">Final Exam</option>
+              <option value="Quiz">Surprise Quiz / Lab</option>
+              <option value="Custom">Custom Test</option>
+            </select>
+            <select id="input-exam-course" class="custom-select sr-only" tabindex="-1"></select>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label for="input-exam-stime" class="block text-[10px] font-mono text-muted mb-0.5">Start Time</label>
+              <input type="time" id="input-exam-stime" value="10:00" class="w-full bg-surface border border-border rounded-xl px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:ring-1 focus:ring-brand">
+            </div>
+            <div>
+              <label for="input-exam-etime" class="block text-[10px] font-mono text-muted mb-0.5">End Time</label>
+              <input type="time" id="input-exam-etime" value="11:30" class="w-full bg-surface border border-border rounded-xl px-2 py-1 text-xs text-primary font-mono focus:outline-none focus:ring-1 focus:ring-brand">
+            </div>
+          </div>
+        </div>
+
+        <input type="text" id="input-holiday-title" placeholder="Description / Note (e.g. Diwali)" class="w-full bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs text-primary focus:outline-none focus:ring-1 focus:ring-brand">
+        <button type="submit" id="btn-submit-holiday" class="w-full py-2 bg-brand text-white rounded-xl text-xs font-bold hover:opacity-90 active:scale-[0.99] transition-all">
+          Save Entry
+        </button>
+      </form>
+
+      <div>
+        <h4 class="text-xs font-bold text-muted uppercase tracking-wider mb-2 font-mono">Current Exceptions</h4>
+        <ul id="list-holidays" class="space-y-2 max-h-44 overflow-y-auto pr-1"></ul>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<!-- MODAL: SEARCH PALETTE -->
+<dialog id="cmd-palette" aria-modal="true" class="bg-transparent p-4 w-full max-w-lg m-auto border-none shadow-none">
+  <div class="bg-surface border border-border rounded-2xl shadow-float-dark overflow-hidden flex flex-col">
+    <div class="flex items-center px-4 border-b border-border">
+      <i class="fa-solid fa-magnifying-glass text-muted text-xs"></i>
+      <input type="text" id="cmd-input" class="w-full bg-transparent border-none focus:ring-0 text-xs py-3.5 px-3 text-primary placeholder-muted outline-none" placeholder="Search courses, teachers, exams...">
+      <kbd class="hidden sm:inline-block font-mono text-[10px] text-muted bg-background border border-border px-1.5 py-0.5 rounded-lg">ESC</kbd>
+    </div>
+    <ul id="cmd-results" class="max-h-64 overflow-y-auto p-2 space-y-1"></ul>
+  </div>
+</dialog>
+
+<!-- MODAL: COURSE CALENDAR -->
+<dialog id="modal-calendar" aria-modal="true" class="bg-transparent p-4 w-full max-w-md m-auto border-none shadow-none" aria-labelledby="cal-title">
+  <div class="bg-surface border border-border rounded-2xl shadow-float-dark w-full max-w-md overflow-hidden flex flex-col mx-auto">
+    <header class="p-5 border-b border-border flex justify-between items-center">
+      <div>
+        <h3 id="cal-title" class="font-display font-bold text-base text-primary leading-tight">Course Attendance</h3>
+        <p id="cal-code" class="text-xs font-mono text-muted mt-0.5">CODE</p>
+      </div>
+      <button type="button" id="btn-close-cal" class="w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center text-muted hover:text-rose-500 transition-colors focus-visible" aria-label="Close Calendar">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </header>
+    <div class="p-5">
+      <div class="flex justify-between items-center mb-4 bg-background p-1.5 rounded-xl border border-border">
+        <button type="button" id="btn-cal-prev" class="w-7 h-7 rounded-xl hover:bg-surface-hover flex items-center justify-center text-primary"><i class="fa-solid fa-chevron-left text-xs"></i></button>
+        <h4 id="cal-month" class="font-bold text-xs text-primary font-mono tracking-wide">Month Year</h4>
+        <button type="button" id="btn-cal-next" class="w-7 h-7 rounded-xl hover:bg-surface-hover flex items-center justify-center text-primary"><i class="fa-solid fa-chevron-right text-xs"></i></button>
+      </div>
+      <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-mono font-bold text-muted mb-2">
+        <div>SU</div><div>MO</div><div>TU</div><div>WE</div><div>TH</div><div>FR</div><div>SA</div>
+      </div>
+      <div id="cal-grid" class="grid grid-cols-7 gap-1.5"></div>
+      <footer class="mt-5 flex flex-wrap justify-center gap-3 text-[11px] font-mono text-muted border-t border-border pt-3">
+        <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Present</div>
+        <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Absent</div>
+        <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Holiday</div>
+        <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> Exam</div>
+      </footer>
+    </div>
+  </div>
+</dialog>
+
+<!-- MODAL: DATE PICKER OVERLAY -->
+<dialog id="modal-datepicker" aria-modal="true" class="bg-transparent p-4 w-full max-w-xs m-auto border-none shadow-none z-[120]">
+  <div class="bg-surface border border-border rounded-2xl shadow-float-dark w-full p-4 flex flex-col mx-auto">
+    <div class="flex justify-between items-center mb-3 bg-background p-1.5 rounded-xl border border-border">
+      <button type="button" id="btn-dp-prev" class="w-8 h-8 rounded-xl hover:bg-surface-hover flex items-center justify-center text-primary active:scale-95 transition-all"><i class="fa-solid fa-chevron-left text-xs pointer-events-none"></i></button>
+      <h4 id="dp-month" class="font-bold text-xs text-primary font-mono tracking-wide">Month Year</h4>
+      <button type="button" id="btn-dp-next" class="w-8 h-8 rounded-xl hover:bg-surface-hover flex items-center justify-center text-primary active:scale-95 transition-all"><i class="fa-solid fa-chevron-right text-xs pointer-events-none"></i></button>
+    </div>
+    <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-mono font-bold text-muted mb-2">
+      <div>SU</div><div>MO</div><div>TU</div><div>WE</div><div>TH</div><div>FR</div><div>SA</div>
+    </div>
+    <div id="dp-grid" class="grid grid-cols-7 gap-1"></div>
+    <button type="button" id="btn-dp-close" class="mt-3 w-full py-2 bg-surface-hover text-muted hover:text-primary rounded-xl text-xs font-bold transition-all border border-border">Cancel</button>
+  </div>
+</dialog>
+
+<div id="toast-container" class="fixed z-[100] flex flex-col gap-2 pointer-events-none w-full max-w-xs px-4 sm:px-0"></div>
+
+<script>
+'use strict';
+
+const CONFIG = {
+  semesterStart: '2026-07-29',
+  semesterEnd: '2026-11-20',
+  refreshRateMs: 60000, 
+  attendanceTarget: 0.75,
+  storageKey: 'mca_workspace_v3',
+  themeKey: 'mca_workspace_theme',
+  exceptionsKey: 'mca_workspace_exceptions_v3',
+  tasksKey: 'mca_workspace_tasks_v3',
+  notifsKey: 'mca_workspace_notifs_v3',
+  syncConfigKey: 'mca_sync_config',
+  syncLastTsKey: 'mca_sync_last_ts'
+};
+
+const COURSE_SHORTCUTS = {
+  "MCA110126": "CPS",
+  "MCA110226": "APP",
+  "MCA110326": "APP Lab",
+  "MCA110426": "FAI",
+  "MCA110526": "FAI Lab",
+  "MCA110626": "PC",
+  "MCA110726": "DS",
+  "MCA110826": "DS Lab",
+  "MCA110926": "ADSA",
+  "MCA111026": "ADSA Lab",
+  "MMP": "MMP",
+  "SS": "SS",
+  "VA": "VA",
+  "LR": "LR",
+  "QA": "QA",
+  "BDIJ": "BDIJ"
+};
+
+const DEFAULT_EXCEPTIONS = {
+  '2026-08-15': { type: 'holiday', title: 'Independence Day' },
+  '2026-08-21': { type: 'holiday', title: 'Punjab Bandh' },
+  '2026-08-31': { 
+    type: 'exam', 
+    examCategory: 'FAT',
+    courseCode: 'MCA110926', 
+    time: '10:00 AM - 11:30 AM',
+    sTime: '10:00',
+    eTime: '11:30', 
+    title: 'Advanced Data Structures and Algorithms' 
+  },
+  '2026-09-01': { 
+    type: 'exam', 
+    examCategory: 'FAT',
+    courseCode: 'MCA110226', 
+    time: '10:00 AM - 11:30 AM',
+    sTime: '10:00',
+    eTime: '11:30', 
+    title: 'Advanced Python Programming' 
+  },
+  '2026-09-02': { 
+    type: 'exam', 
+    examCategory: 'FAT',
+    courseCode: 'MCA110126', 
+    time: '10:00 AM - 11:30 AM',
+    sTime: '10:00',
+    eTime: '11:30', 
+    title: 'Computational Probability and Statistics' 
+  },
+  '2026-09-03': { 
+    type: 'exam', 
+    examCategory: 'FAT',
+    courseCode: 'MCA110726', 
+    time: '10:00 AM - 11:30 AM',
+    sTime: '10:00',
+    eTime: '11:30', 
+    title: 'Database Systems' 
+  },
+  '2026-09-04': { 
+    type: 'exam', 
+    examCategory: 'FAT',
+    courseCode: 'MCA110426', 
+    time: '10:00 AM - 11:30 AM',
+    sTime: '10:00',
+    eTime: '11:30', 
+    title: 'Foundations of Artificial Intelligence' 
+  },
+  '2026-09-05': { type: 'holiday', title: 'Teachers Day' }
+};
+
+const DEFAULT_TASKS = [
+  { id: 'task_1', courseCode: 'MCA110226', title: 'OOPs & Generators Problem Sheet', dueDate: '2026-08-25', completed: false },
+  { id: 'task_2', courseCode: 'MCA110726', title: 'Relational Schema Prep Quiz', dueDate: '2026-08-28', completed: false }
+];
+
+const TOKENS = {
+  colors: {
+    blue: { bg: 'bg-blue-500', border: 'border-blue-500', text: 'text-blue-500', light: 'bg-blue-500/10', hex: '#3b82f6' },
+    purple: { bg: 'bg-purple-500', border: 'border-purple-500', text: 'text-purple-500', light: 'bg-purple-500/10', hex: '#a855f7' },
+    emerald: { bg: 'bg-emerald-500', border: 'border-emerald-500', text: 'text-emerald-500', light: 'bg-emerald-500/10', hex: '#10b981' },
+    rose: { bg: 'bg-rose-500', border: 'border-rose-500', text: 'text-rose-500', light: 'bg-rose-500/10', hex: '#f43f5e' },
+    amber: { bg: 'bg-amber-500', border: 'border-amber-500', text: 'text-amber-500', light: 'bg-amber-500/10', hex: '#f59e0b' },
+    slate: { bg: 'bg-slate-500', border: 'border-slate-500', text: 'text-slate-500', light: 'bg-slate-500/10', hex: '#64748b' },
+    orange: { bg: 'bg-orange-500', border: 'border-orange-500', text: 'text-orange-500', light: 'bg-orange-500/10', hex: '#f97316' },
+    pink: { bg: 'bg-pink-500', border: 'border-pink-500', text: 'text-pink-500', light: 'bg-pink-500/10', hex: '#ec4899' },
+  }
+};
+
+const DATA = {
+  exceptions: {},
+  tasks: [],
+  notifications: [],
+  courses: {
+    "MCA110126": { code: "MCA110126", title: "Computational Probability & Statistics", teacher: "Mr. Sanjeev Kumar", token: "orange", icon: "fa-calculator", type: "Theory" },
+    "MCA110226": { code: "MCA110226", title: "Advanced Python Programming", teacher: "Dr. Jaspreet Singh", token: "blue", icon: "fa-python", type: "Theory", req: "Laptop" },
+    "MCA110326": { code: "MCA110326", title: "Advanced Python Programming Lab", teacher: "Mr. Rohit", token: "blue", icon: "fa-laptop-code", type: "Lab", req: "Laptop" },
+    "MCA110426": { code: "MCA110426", title: "Foundations of Artificial Intelligence", teacher: "Dr. Saloni Manhas", token: "purple", icon: "fa-brain", type: "Theory" },
+    "MCA110526": { code: "MCA110526", title: "Foundations of AI Lab", teacher: "Mr. Davinder", token: "purple", icon: "fa-network-wired", type: "Lab", req: "Laptop" },
+    "MCA110626": { code: "MCA110626", title: "Professional Communication", teacher: "Dr. Ankita", token: "pink", icon: "fa-comments", type: "Theory" },
+    "MCA110726": { code: "MCA110726", title: "Database Systems", teacher: "Mr. Vijay Kumar", token: "emerald", icon: "fa-database", type: "Theory" },
+    "MCA110826": { code: "MCA110826", title: "Database Systems Lab", teacher: "Ms. Mandeep Kaur", token: "emerald", icon: "fa-server", type: "Lab" },
+    "MCA110926": { code: "MCA110926", title: "Advanced Data Structures & Algorithms", teacher: "Dr. Harmeet Kaur", token: "rose", icon: "fa-sitemap", type: "Theory" },
+    "MCA111026": { code: "MCA111026", title: "Advanced DSA Lab", teacher: "Ms. Anjula", token: "rose", icon: "fa-diagram-project", type: "Lab" },
+    "MMP":       { code: "MMP2025", title: "Mentor Mentee Program", teacher: "Dr. Saloni", token: "slate", icon: "fa-users", type: "Mentorship" },
+    "SS":        { code: "MSSS-S1-1", title: "Soft Skills", teacher: "Hina", token: "amber", icon: "fa-comments", type: "Skill" },
+    "VA":        { code: "MSVA-S1-1", title: "Verbal Ability", teacher: "Hina", token: "amber", icon: "fa-language", type: "Skill" },
+    "LR":        { code: "PGLR-S1-1", title: "Logical Reasoning", teacher: "Shivani Sahaye", token: "amber", icon: "fa-brain", type: "Skill" },
+    "QA":        { code: "PGQA-S1-1", title: "Quantitative Aptitude", teacher: "Shivani Sahaye", token: "amber", icon: "fa-calculator", type: "Skill" },
+    "BDIJ":      { code: "PTDSA001", title: "Basic DSA in Java", teacher: "Saurav Chauhan", token: "rose", icon: "fa-code", type: "Practice" }
+  },
+  timetable: {
+    3: [ 
+        {s:570,e:620,c:"MCA110426",r:"R605"}, 
+        {s:620,e:670,c:"LR",name:"Logical Reasoning",teacher:"Shivani Sahaye",r:"R605"}, 
+        {s:670,e:770,c:"MCA110526",r:"L604"}, 
+        {s:770,e:815,c:"LUNCH",name:"LUNCH BREAK"}, 
+        {s:815,e:860,c:"MCA110126",r:"R605"}, 
+        {s:860,e:950,c:"BDIJ",r:"L105"}, 
+        {s:950,e:995,c:"VA",name:"Verbal Ability",teacher:"Hina",r:"R605"} 
+    ],
+    4: [ 
+        {s:570,e:620,c:"MCA110126",r:"R512"}, 
+        {s:620,e:670,c:"MCA110426",r:"R512"}, 
+        {s:670,e:720,c:"MCA110226",r:"R512"}, 
+        {s:720,e:770,c:"MCA110726",r:"R512"}, 
+        {s:770,e:815,c:"LUNCH",name:"LUNCH BREAK"}, 
+        {s:815,e:860,c:"MCA110926",r:"R311"}, 
+        {s:860,e:905,c:"MCA110626",r:"L604"}, 
+        {s:905,e:995,c:"MCA110826",r:"L205"} 
+    ],
+    5: [ 
+        {s:570,e:620,c:"MCA110926",r:"R512"}, 
+        {s:620,e:670,c:"LIBRARY",name:"Library / Self Study"}, 
+        {s:670,e:720,c:"MCA110126",r:"R512"}, 
+        {s:720,e:770,c:"MCA110226",r:"R512"}, 
+        {s:770,e:815,c:"LUNCH",name:"LUNCH BREAK"}, 
+        {s:815,e:860,c:"SS",name:"Soft Skills",teacher:"Hina",r:"R605"}, 
+        {s:860,e:905,c:"QA",name:"Quantitative Aptitude",teacher:"Shivani Sahaye",r:"R605"}, 
+        {s:905,e:995,c:"BDIJ",r:"L604"} 
+    ],
+    6: [ 
+        {s:570,e:670,c:"MCA111026",r:"L604"}, 
+        {s:670,e:720,c:"MCA110726",r:"R603"}, 
+        {s:720,e:770,c:"MCA110626",r:"L212"}, 
+        {s:770,e:815,c:"LUNCH",name:"LUNCH BREAK"}, 
+        {s:815,e:905,c:"BDIJ",r:"L604"}, 
+        {s:905,e:950,c:"MCA110226",r:"R603"}, 
+        {s:950,e:995,c:"MCA110926",r:"R603"} 
+    ],
+    0: [ 
+        {s:670,e:720,c:"MCA110426",r:"R512"}, 
+        {s:720,e:770,c:"MCA110726",r:"R512"}, 
+        {s:770,e:815,c:"LUNCH",name:"LUNCH BREAK"}, 
+        {s:815,e:905,c:"MCA110326",r:"L204"}, 
+        {s:905,e:950,c:"MMP",name:"Mentor Mentee Program",r:"L204"} 
+    ]
+  },
+  days: {1:'Monday', 2:'Tuesday', 3:'Wednesday', 4:'Thursday', 5:'Friday', 6:'Saturday', 0:'Sunday'},
+  hostel: {
+    timings: {
+      weekday: [
+        { name: 'Breakfast', s: 450, e: 540, time: '07:30 AM - 09:00 AM' },
+        { name: 'Lunch', s: 720, e: 840, time: '12:00 PM - 02:00 PM' },
+        { name: 'Evening Snacks', s: 990, e: 1020, time: '04:30 PM - 05:00 PM' },
+        { name: 'Dinner', s: 1170, e: 1260, time: '07:30 PM - 09:00 PM' }
+      ],
+      weekend: [
+        { name: 'Breakfast', s: 480, e: 555, time: '08:00 AM - 09:15 AM' },
+        { name: 'Lunch', s: 750, e: 840, time: '12:30 PM - 02:00 PM' },
+        { name: 'Evening Snacks', s: 990, e: 1020, time: '04:30 PM - 05:00 PM' },
+        { name: 'Dinner', s: 1170, e: 1260, time: '07:30 PM - 09:00 PM' }
+      ]
+    },
+    laundry: {
+      1: { active: true, desc: 'Drop & Pick Active (4:00 PM - 6:00 PM)', detail: 'Laundry day today! Einstein Hall collection point.' },
+      2: { active: false, desc: 'No Laundry Today', detail: 'Next slot: Thursday (4:00 PM - 6:00 PM)' },
+      3: { active: false, desc: 'No Laundry Today', detail: 'Next slot: Thursday (4:00 PM - 6:00 PM)' },
+      4: { active: true, desc: 'Drop & Pick Active (4:00 PM - 6:00 PM)', detail: 'Laundry day today! Einstein Hall collection point.' },
+      5: { active: false, desc: 'No Laundry Today', detail: 'Next slot: Monday (4:00 PM - 6:00 PM)' },
+      6: { active: false, desc: 'No Laundry Today', detail: 'Next slot: Monday (4:00 PM - 6:00 PM)' },
+      0: { active: false, desc: 'No Laundry Today', detail: 'Next slot: Monday (4:00 PM - 6:00 PM)' }
+    },
+    menu: {
+      1: { breakfast: 'Kathi Roll / Banana / Green Chutney / Tea', lunch: 'White Channa / Baingan Bharta / Rice / Roti / Curd / Salad', snacks: 'Tea / Samosa / Imly Chutney', dinner: 'Dal Makhni / Aloo Gobhi / Rice / Roti / Pickle', dessert: 'Kheer' },
+      2: { breakfast: 'Poori / Aloo Sabji / Tea / Milk', lunch: 'Dal Makhni / Veg Jalfrezi / Peas Pulao / Roti / Cucumber Raita', snacks: 'Tea / Pasta / Tomato Sauce', dinner: 'Moth Dal / Aloo Nutri / Veg Fried Rice / Roti', dessert: 'Brownie' },
+      3: { breakfast: 'Daliya / Bread Pakoda / Chutney / Tea', lunch: 'Rajmah Masala / Gheeya Sabji / Raita / Veg Biryani / Roti', snacks: 'Tea / Frymess', dinner: 'Dal Bukhara / Paneer Lababdar / Chicken Curry / Rice / Roti', dessert: 'Gulab Jamun' },
+      4: { breakfast: 'Cornflakes with Milk / Poha / Banana / Tea', lunch: 'Kari Pakora / Aloo Amritsari / Rice / Roti / Salad', snacks: 'Tea / Rusk / Fruti', dinner: 'Rajmah / Mix Veg / Rice / Roti / Salad', dessert: 'Fruit Custard' },
+      5: { breakfast: 'Bread Omelette / Aloo Sandwich / Bread Jam / Tea', lunch: 'Dal Makhani / Capsicum Raita / Veg Pulao / Roti / Papad', snacks: 'Tea / Hot Dog / Tomato Sauce', dinner: 'Hari Moong Dal / Veg Kofta / Jeera Rice / Roti', dessert: 'Ice Cream' },
+      6: { breakfast: 'Onion Paneer Paratha / Butter / Curd / Tea', lunch: 'Moongi Masri Dal / Mushroom Mutter / Rice / Roti / Salad', snacks: 'Tea / Patties / Lahori Jeera', dinner: 'Black Chana / Seasonal Veg / Rice / Roti', dessert: 'Sewian' },
+      0: { breakfast: 'Channa Bhatura / Pickle / Tea / Milk', lunch: 'Channa Dal Tadka / Seasonal Veg / Curd / Rice / Roti', snacks: 'Coffee / Biscuit / Chips', dinner: 'Masar Sabut / Kadhai Paneer / Roti / Salad', dessert: 'Dry Cake' }
+    }
+  }
+};
+
+const DOM = {};
+const Utils = {
+  dateToIso: (d) => {
+    const nd = new Date(d);
+    return new Date(nd.getTime() - nd.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  },
+  formatMins: (mins) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h > 12 ? h - 12 : (h === 0 ? 12 : h)}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+  },
+  timeStringToMins: (timeStr) => {
+    if (!timeStr) return 0;
+    const [h, m] = timeStr.split(':').map(Number);
+    return h * 60 + m;
+  },
+  getCourseAbbr: (courseCode) => {
+    return COURSE_SHORTCUTS[courseCode] || (DATA.courses[courseCode]?.title || courseCode);
+  },
+  getWeekDates: () => {
+    const now = new Date();
+    const dates = {};
+    const sun = new Date(now);
+    sun.setDate(now.getDate() - now.getDay());
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sun);
+      d.setDate(sun.getDate() + i);
+      dates[i] = Utils.dateToIso(d);
+    }
+    return dates;
+  },
+  getNextClassForCourse: (courseCode) => {
+    const now = new Date();
+    const curMins = now.getHours() * 60 + now.getMinutes();
+
+    for (let offset = 0; offset < 14; offset++) {
+      const checkDate = new Date();
+      checkDate.setDate(now.getDate() + offset);
+      const dNum = checkDate.getDay();
+      const dStr = Utils.dateToIso(checkDate);
+
+      if (DATA.exceptions[dStr]?.type === 'holiday') continue;
+
+      const daySlots = DATA.timetable[dNum] || [];
+      for (const slot of daySlots) {
+        if (slot.c === courseCode) {
+          if (offset === 0 && slot.s <= curMins) continue;
+          return {
+            dateStr: dStr,
+            dayName: DATA.days[dNum],
+            timeStr: `${Utils.formatMins(slot.s)} - ${Utils.formatMins(slot.e)}`,
+            room: slot.r
+          };
+        }
+      }
+    }
+    return null;
+  },
+  createFrag: () => document.createDocumentFragment(),
+  renderMealPills: (rawText, isHeroCard = false) => {
+    if (!rawText) return `<span class="${isHeroCard ? 'text-white/70' : 'text-muted'}">--</span>`;
+    const items = rawText.split('/').map(s => s.trim()).filter(Boolean);
+    const pillClasses = isHeroCard 
+      ? 'inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-white/20 border border-white/30 text-white shadow-sm backdrop-blur-md'
+      : 'inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-surface border border-border text-primary shadow-subtle';
+    return `<div class="flex flex-wrap gap-1.5 pt-1">${items.map(item => `<span class="${pillClasses}">${item}</span>`).join('')}</div>`;
+  },
+  cacheDOM: () => {
+    [
+      'header-date', 'btn-notif', 'notif-badge', 'btn-theme', 'btn-search',
+      'card-now', 'card-next', 'list-later', 'stat-classes-left',
+      'stat-att-global', 'stat-safe-miss', 'stat-sem-week', 'stat-sem-bar', 'stat-sem-days',
+      'search-schedule', 'toggle-timeline', 'toggle-grid', 'schedule-timeline', 'schedule-grid',
+      'dynamic-grid', 'hub-attendance-calendar', 'hub-cal-month',
+      'btn-hub-cal-prev', 'btn-hub-cal-next', 'stat-best-subject', 'stat-worst-subject', 'hub-courses',
+      'toast-container', 'cmd-palette', 'cmd-input', 'cmd-results', 'modal-calendar',
+      'cal-title', 'cal-code', 'btn-close-cal', 'btn-cal-prev', 'cal-month', 'btn-cal-next', 'cal-grid',
+      'hostel-now-card', 'hostel-meal-header-container', 'hostel-next-title', 'hostel-next-menu',
+      'hostel-timings', 'timing-btn-regular', 'timing-btn-weekend', 'hostel-laundry-today-summary',
+      'hostel-laundry-hostel-tab', 'deadlines-list',
+      'schedule-legend', 'btn-manage-holidays', 'modal-holidays', 'btn-close-holidays',
+      'form-add-holiday', 'input-holiday-date', 'input-holiday-type', 'input-holiday-title',
+      'input-exam-category', 'input-exam-course', 'input-exam-stime', 'input-exam-etime', 'exam-extra-fields', 'list-holidays',
+      'tab-tasks', 'btn-add-task', 'modal-task', 'btn-close-task', 'form-add-task', 'task-course', 'task-title', 'task-duedate', 'label-task-duedate',
+      'tasks-container', 'stat-tasks-pending', 'stat-tasks-due-soon', 'stat-tasks-completed', 'tasks-count-info',
+      'modal-notif-center', 'btn-close-notif-center', 'btn-clear-notifs', 'notif-center-list',
+      'holiday-form-mode-title', 'btn-cancel-edit-holiday', 'btn-submit-holiday', 'btn-task-auto-date', 'task-modal-title',
+      'hostel-day-selector', 'hostel-menu-active-day',
+      'modal-datepicker', 'btn-dp-prev', 'dp-month', 'btn-dp-next', 'dp-grid', 'btn-dp-close', 'label-holiday-date'
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) DOM[id] = el;
+    });
+  },
+  dom: (id) => DOM[id] || document.getElementById(id)
+};
+
+const State = {
+  _att: {},
+  load: () => {
+    try { State._att = JSON.parse(localStorage.getItem(CONFIG.storageKey)) || {}; } catch(e) { State._att = {}; }
+    try {
+      const storedExceptions = localStorage.getItem(CONFIG.exceptionsKey);
+      DATA.exceptions = storedExceptions !== null ? JSON.parse(storedExceptions) : { ...DEFAULT_EXCEPTIONS };
+    } catch(e) {
+      DATA.exceptions = { ...DEFAULT_EXCEPTIONS };
+    }
+    try {
+      const storedTasks = localStorage.getItem(CONFIG.tasksKey);
+      DATA.tasks = storedTasks !== null ? JSON.parse(storedTasks) : [...DEFAULT_TASKS];
+    } catch(e) {
+      DATA.tasks = [...DEFAULT_TASKS];
+    }
+    try {
+      const storedNotifs = localStorage.getItem(CONFIG.notifsKey);
+      DATA.notifications = storedNotifs !== null ? JSON.parse(storedNotifs) : [];
+    } catch(e) {
+      DATA.notifications = [];
+    }
+  },
+  save: () => {
+    try { localStorage.setItem(CONFIG.storageKey, JSON.stringify(State._att)); } catch(e) {}
+    Sync.markDirty();
+  },
+  saveTasks: () => {
+    try { localStorage.setItem(CONFIG.tasksKey, JSON.stringify(DATA.tasks)); } catch(e) {}
+    Sync.markDirty();
+  },
+  saveNotifs: () => {
+    try { localStorage.setItem(CONFIG.notifsKey, JSON.stringify(DATA.notifications)); } catch(e) {}
+    Sync.markDirty();
+  },
+  get att() { return State._att; },
+  mark: (pkey, val) => {
+    if (val === null) delete State._att[pkey];
+    else State._att[pkey] = val;
+    State.save();
+    window.dispatchEvent(new Event('attendance-updated'));
+  },
+  seed: () => {
+    State.load();
+    let purged = false;
+    Object.keys(State._att).forEach(key => {
+      const parts = key.split('-');
+      const dStr = parts.slice(1, 4).join('-');
+      if (DATA.exceptions[dStr]?.type === 'holiday') {
+        delete State._att[key];
+        purged = true;
+      }
+    });
+
+    const end = new Date();
+    const cur = new Date(CONFIG.semesterStart);
+    let changed = purged;
+    while (cur <= end) {
+      const dStr = Utils.dateToIso(cur);
+      const dNum = cur.getDay();
+      if (DATA.timetable[dNum] && (!DATA.exceptions[dStr] || DATA.exceptions[dStr].type !== 'holiday')) {
+        DATA.timetable[dNum].forEach(p => {
+          if (p.c !== 'LUNCH' && p.c !== 'LIBRARY') {
+            const key = `${p.c}-${dStr}-${p.s}`;
+            if (!Object.prototype.hasOwnProperty.call(State._att, key)) {
+              State._att[key] = 'present';
+              changed = true;
+            }
+          }
+        });
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    if (changed || Object.keys(State._att).length === 0) State.save();
+  }
+};
+
+const Sync = {
+  get config() {
+    try { return JSON.parse(localStorage.getItem(CONFIG.syncConfigKey)) || null; } catch(e) { return null; }
+  },
+  setConfig: (url, token) => {
+    localStorage.setItem(CONFIG.syncConfigKey, JSON.stringify({ url, token }));
+  },
+  _pushTimer: null,
+  _setIcon: (state) => {
+    // state: 'idle' | 'pending' | 'syncing' | 'error' | 'off'
+    const icon = document.getElementById('sync-status-icon');
+    if (!icon) return;
+    const map = {
+      off: 'fa-cloud-arrow-up',
+      idle: 'fa-cloud-arrow-up',
+      pending: 'fa-cloud-arrow-up',
+      syncing: 'fa-arrows-rotate fa-spin',
+      error: 'fa-triangle-exclamation'
+    };
+    icon.className = `fa-solid ${map[state] || map.idle} text-sm`;
+    icon.parentElement.classList.toggle('text-rose-500', state === 'error');
+    icon.parentElement.classList.toggle('text-emerald-500', state === 'idle');
+  },
+  buildPayload: () => ({
+    att: State._att,
+    exceptions: DATA.exceptions,
+    tasks: DATA.tasks,
+    notifications: DATA.notifications,
+    updatedAt: Date.now()
+  }),
+  markDirty: () => {
+    const cfg = Sync.config;
+    if (!cfg || !cfg.url) return;
+    Sync._setIcon('pending');
+    clearTimeout(Sync._pushTimer);
+    Sync._pushTimer = setTimeout(Sync.push, 1500);
+  },
+  push: async () => {
+    const cfg = Sync.config;
+    if (!cfg || !cfg.url) return;
+    Sync._setIcon('syncing');
+    try {
+      const res = await fetch(cfg.url.replace(/\/$/, '') + '/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Sync-Token': cfg.token },
+        body: JSON.stringify(Sync.buildPayload())
+      });
+      if (res.status === 409) {
+        const body = await res.json();
+        Sync.applyRemote(body.server);
+        Sync._setIcon('idle');
+        return;
+      }
+      if (res.ok) {
+        const body = await res.json();
+        localStorage.setItem(CONFIG.syncLastTsKey, String(body.updatedAt));
+        Sync._setIcon('idle');
+      } else {
+        Sync._setIcon('error');
+      }
+    } catch (e) {
+      Sync._setIcon('error'); // offline/unreachable — local data is untouched, will retry later
+    }
+  },
+  pull: async () => {
+    const cfg = Sync.config;
+    if (!cfg || !cfg.url) { Sync._setIcon('off'); return; }
+    Sync._setIcon('syncing');
+    try {
+      const res = await fetch(cfg.url.replace(/\/$/, '') + '/api/data', {
+        headers: { 'X-Sync-Token': cfg.token }
+      });
+      if (!res.ok) { Sync._setIcon('error'); return; }
+      const remote = await res.json();
+      const localTs = Number(localStorage.getItem(CONFIG.syncLastTsKey)) || 0;
+      if (remote.updatedAt && remote.updatedAt > localTs) {
+        Sync.applyRemote(remote);
+      }
+      Sync._setIcon('idle');
+    } catch (e) {
+      Sync._setIcon('error'); // offline — keep working with local copy
+    }
+  },
+  applyRemote: (remote) => {
+    State._att = remote.att || {};
+    DATA.exceptions = remote.exceptions || {};
+    DATA.tasks = remote.tasks || [];
+    DATA.notifications = remote.notifications || [];
+    localStorage.setItem(CONFIG.storageKey, JSON.stringify(State._att));
+    localStorage.setItem(CONFIG.exceptionsKey, JSON.stringify(DATA.exceptions));
+    localStorage.setItem(CONFIG.tasksKey, JSON.stringify(DATA.tasks));
+    localStorage.setItem(CONFIG.notifsKey, JSON.stringify(DATA.notifications));
+    localStorage.setItem(CONFIG.syncLastTsKey, String(remote.updatedAt || Date.now()));
+    window.dispatchEvent(new Event('attendance-updated'));
+    if (typeof Schedule !== 'undefined') Schedule.render();
+    if (typeof Today !== 'undefined') Today.render();
+    if (typeof Hostel !== 'undefined') Hostel.render();
+    if (typeof TasksManager !== 'undefined') TasksManager.render();
+    if (typeof AttendanceCalc !== 'undefined') { AttendanceCalc.updateHub(); AttendanceCalc.renderBtns(); }
+  },
+  promptSetup: () => {
+    const existing = Sync.config || { url: '', token: '' };
+    const url = window.prompt('Sync server URL (e.g. https://your-app.onrender.com)', existing.url || '');
+    if (url === null) return;
+    const token = window.prompt('Sync token (the shared secret set on your server)', existing.token || '');
+    if (token === null) return;
+    Sync.setConfig(url.trim(), token.trim());
+    Sync.pull().then(() => Sync.push());
+  },
+  init: () => {
+    const btn = document.getElementById('btn-sync-settings');
+    if (btn) btn.addEventListener('click', Sync.promptSetup);
+    if (Sync.config && Sync.config.url) Sync.pull();
+    else Sync._setIcon('off');
+  }
+};
+
+const Dropdown = {
+  activeId: null,
+  init: () => {
+    document.addEventListener('click', (e) => {
+      if (Dropdown.activeId) {
+        const wrapper = Utils.dom(`dropdown-wrapper-${Dropdown.activeId}`);
+        if (wrapper && !wrapper.contains(e.target)) Dropdown.close(Dropdown.activeId);
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && Dropdown.activeId) Dropdown.close(Dropdown.activeId);
+      if (Dropdown.activeId && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) {
+        e.preventDefault();
+        Dropdown.handleKeyboard(e.key);
+      }
+    });
+  },
+  build: (id) => {
+    const select = Utils.dom(id);
+    if (!select) return;
+    
+    if (!select.classList.contains('sr-only')) {
+        select.classList.add('sr-only');
+        select.tabIndex = -1;
+    }
+
+    let wrapper = Utils.dom(`dropdown-wrapper-${id}`);
+    if (!wrapper) {
+      wrapper = document.createElement('div');
+      wrapper.id = `dropdown-wrapper-${id}`;
+      wrapper.className = 'relative w-full';
+      select.parentNode.insertBefore(wrapper, select);
+      wrapper.appendChild(select);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = `dropdown-btn-${id}`;
+      btn.className = 'w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary focus:outline-none focus:ring-1 focus:ring-brand flex justify-between items-center text-left min-h-[34px]';
+      btn.innerHTML = `<span class="truncate pr-2 pointer-events-none" id="dropdown-text-${id}"></span><i class="fa-solid fa-chevron-down text-[10px] text-muted transition-transform duration-200 pointer-events-none" id="dropdown-icon-${id}"></i>`;
+      btn.onclick = () => Dropdown.toggle(id);
+      wrapper.appendChild(btn);
+
+      const panel = document.createElement('ul');
+      panel.id = `dropdown-panel-${id}`;
+      panel.className = 'absolute z-[60] top-full left-0 w-full mt-1 bg-surface border border-border rounded-xl shadow-float-dark hidden flex-col max-h-48 overflow-y-auto p-1.5 focus:outline-none list-none m-0';
+      wrapper.appendChild(panel);
+      
+      select.addEventListener('change', () => Dropdown.syncText(id));
+    }
+
+    const panel = Utils.dom(`dropdown-panel-${id}`);
+    if (panel) {
+        panel.innerHTML = '';
+        Array.from(select.options).forEach((opt, idx) => {
+        const li = document.createElement('li');
+        li.className = 'flex items-center gap-2 p-2 rounded-lg hover:bg-surface-hover cursor-pointer transition-colors text-xs text-primary group ' + (opt.selected ? 'bg-brand/10 text-brand font-bold' : '');
+        li.setAttribute('data-value', opt.value);
+        li.innerHTML = `
+            <div class="flex-1 truncate">${opt.text}</div>
+            ${opt.selected ? '<i class="fa-solid fa-check text-[10px] text-brand"></i>' : ''}
+        `;
+        li.onclick = (e) => {
+            e.stopPropagation();
+            select.value = opt.value;
+            select.dispatchEvent(new Event('change'));
+            Dropdown.close(id);
+            Dropdown.build(id);
+        };
+        panel.appendChild(li);
+        });
+    }
+    Dropdown.syncText(id);
+  },
+  syncText: (id) => {
+    const select = Utils.dom(id);
+    const textSpan = Utils.dom(`dropdown-text-${id}`);
+    if (select && textSpan) {
+      const activeOpt = select.options[select.selectedIndex];
+      textSpan.innerText = activeOpt ? activeOpt.text : 'Select...';
+    }
+  },
+  toggle: (id) => {
+    if (Dropdown.activeId && Dropdown.activeId !== id) Dropdown.close(Dropdown.activeId);
+    const panel = Utils.dom(`dropdown-panel-${id}`);
+    const icon = Utils.dom(`dropdown-icon-${id}`);
+    if (panel && panel.classList.contains('hidden')) {
+      panel.classList.remove('hidden');
+      panel.classList.add('flex');
+      if(icon) icon.classList.add('rotate-180');
+      Dropdown.activeId = id;
+      const sel = panel.querySelector('.text-brand');
+      if (sel) sel.scrollIntoView({block:'nearest'});
+    } else {
+      Dropdown.close(id);
+    }
+  },
+  close: (id) => {
+    const panel = Utils.dom(`dropdown-panel-${id}`);
+    const icon = Utils.dom(`dropdown-icon-${id}`);
+    if (panel) {
+      panel.classList.add('hidden');
+      panel.classList.remove('flex');
+    }
+    if (icon) icon.classList.remove('rotate-180');
+    if (Dropdown.activeId === id) Dropdown.activeId = null;
+  },
+  handleKeyboard: (key) => {
+     const panel = Utils.dom(`dropdown-panel-${Dropdown.activeId}`);
+     if (!panel) return;
+     const items = Array.from(panel.querySelectorAll('li'));
+     if (!items.length) return;
+     
+     let currentIdx = items.findIndex(item => item.classList.contains('bg-surface-hover'));
+     if (currentIdx === -1) currentIdx = items.findIndex(item => item.classList.contains('text-brand'));
+     
+     items.forEach(item => item.classList.remove('bg-surface-hover'));
+
+     if (key === 'ArrowDown') {
+       currentIdx = (currentIdx + 1) % items.length;
+     } else if (key === 'ArrowUp') {
+       currentIdx = (currentIdx - 1 + items.length) % items.length;
+     } else if (key === 'Enter') {
+       if (currentIdx >= 0 && currentIdx < items.length) items[currentIdx].click();
+       return;
+     }
+     
+     if (currentIdx >= 0) {
+       items[currentIdx].classList.add('bg-surface-hover');
+       items[currentIdx].scrollIntoView({ block: 'nearest' });
+     }
+  }
+};
+
+const DatePicker = {
+  targetInputId: null,
+  targetLabelId: null,
+  currentMonth: new Date().getMonth(),
+  currentYear: new Date().getFullYear(),
+  init: () => {
+    const modal = Utils.dom('modal-datepicker');
+    const btnClose = Utils.dom('btn-dp-close');
+    const btnPrev = Utils.dom('btn-dp-prev');
+    const btnNext = Utils.dom('btn-dp-next');
+
+    if (modal) {
+      modal.addEventListener('click', e => {
+        if (e.target === modal) DatePicker.close();
+      });
+    }
+
+    if (btnClose) btnClose.onclick = () => DatePicker.close();
+
+    if (btnPrev) {
+      btnPrev.onclick = (e) => {
+        e.stopPropagation();
+        DatePicker.currentMonth--;
+        if (DatePicker.currentMonth < 0) { DatePicker.currentMonth = 11; DatePicker.currentYear--; }
+        DatePicker.renderGrid();
+      };
+    }
+    if (btnNext) {
+      btnNext.onclick = (e) => {
+        e.stopPropagation();
+        DatePicker.currentMonth++;
+        if (DatePicker.currentMonth > 11) { DatePicker.currentMonth = 0; DatePicker.currentYear++; }
+        DatePicker.renderGrid();
+      };
+    }
+  },
+  open: (inputId, labelId) => {
+    DatePicker.targetInputId = inputId;
+    DatePicker.targetLabelId = labelId;
+    const input = Utils.dom(inputId);
+    let d = new Date();
+    if (input && input.value) {
+      const parsed = new Date(input.value);
+      if (!isNaN(parsed)) d = parsed;
+    }
+    DatePicker.currentMonth = d.getMonth();
+    DatePicker.currentYear = d.getFullYear();
+    DatePicker.renderGrid();
+    
+    const modal = Utils.dom('modal-datepicker');
+    if (modal && typeof modal.showModal === 'function') {
+      modal.showModal();
+    }
+  },
+  selectDate: (dStr) => {
+    const input = Utils.dom(DatePicker.targetInputId);
+    const label = Utils.dom(DatePicker.targetLabelId);
+    if (input) {
+      input.value = dStr;
+      input.dispatchEvent(new Event('change'));
+    }
+    if (label) {
+      const parsed = new Date(dStr);
+      label.innerText = parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+    DatePicker.close();
+  },
+  close: () => {
+    const modal = Utils.dom('modal-datepicker');
+    if (modal && typeof modal.close === 'function' && modal.open) {
+      modal.close();
+    }
+  },
+  renderGrid: () => {
+    const grid = Utils.dom('dp-grid');
+    const monthEl = Utils.dom('dp-month');
+    if (!grid || !monthEl) return;
+
+    const date = new Date(DatePicker.currentYear, DatePicker.currentMonth, 1);
+    monthEl.innerText = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    const firstDayIndex = date.getDay();
+    const lastDay = new Date(DatePicker.currentYear, DatePicker.currentMonth + 1, 0).getDate();
+    const prevLastDay = new Date(DatePicker.currentYear, DatePicker.currentMonth, 0).getDate();
+
+    grid.innerHTML = '';
+    const frag = Utils.createFrag();
+
+    for (let x = firstDayIndex; x > 0; x--) {
+      const div = document.createElement('div');
+      div.className = 'aspect-square flex items-center justify-center text-[11px] text-muted/20 font-mono';
+      div.innerText = prevLastDay - x + 1;
+      frag.appendChild(div);
+    }
+
+    const todayStr = Utils.dateToIso(new Date());
+    const selectedStr = Utils.dom(DatePicker.targetInputId)?.value;
+
+    for (let i = 1; i <= lastDay; i++) {
+      const cellDate = new Date(DatePicker.currentYear, DatePicker.currentMonth, i);
+      const dStr = Utils.dateToIso(cellDate);
+
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'aspect-square flex flex-col items-center justify-center text-xs font-bold rounded-xl relative transition-all focus-visible active:scale-95 font-mono';
+      cell.innerText = i;
+      cell.onclick = (e) => {
+        e.stopPropagation();
+        DatePicker.selectDate(dStr);
+      };
+
+      const ex = DATA.exceptions[dStr];
+      
+      if (dStr === selectedStr) {
+        cell.className += ' bg-brand text-white shadow-sm ring-2 ring-brand ring-offset-1 ring-offset-surface';
+      } else if (ex?.type === 'holiday') {
+        cell.className += ' bg-amber-500/15 text-amber-500 border border-amber-500/30';
+      } else if (ex?.type === 'exam') {
+        cell.className += ' bg-indigo-500/15 text-indigo-500 border border-indigo-500/30';
+      } else if (dStr === todayStr) {
+        cell.className += ' text-brand border border-brand/50 font-bold';
+      } else {
+        cell.className += ' bg-transparent text-primary hover:bg-surface-hover';
+      }
+
+      frag.appendChild(cell);
+    }
+    grid.appendChild(frag);
+  }
+};
+
+const AttendanceCalc = {
+  hubCalMonth: new Date().getMonth(),
+  hubCalYear: new Date().getFullYear(),
+
+  init: () => {
+    const prevBtn = Utils.dom('btn-hub-cal-prev');
+    const nextBtn = Utils.dom('btn-hub-cal-next');
+    if (prevBtn) {
+      prevBtn.onclick = () => {
+        AttendanceCalc.hubCalMonth--;
+        if (AttendanceCalc.hubCalMonth < 0) {
+          AttendanceCalc.hubCalMonth = 11;
+          AttendanceCalc.hubCalYear--;
+        }
+        AttendanceCalc.renderAttendanceCalendar();
+      };
+    }
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        AttendanceCalc.hubCalMonth++;
+        if (AttendanceCalc.hubCalMonth > 11) {
+          AttendanceCalc.hubCalMonth = 0;
+          AttendanceCalc.hubCalYear++;
+        }
+        AttendanceCalc.renderAttendanceCalendar();
+      };
+    }
+    window.addEventListener('attendance-updated', () => {
+        AttendanceCalc.updateHub();
+        AttendanceCalc.renderBtns();
+    });
+  },
+
+  getCourseKey: (k) => k.split('-')[0],
+
+  computeStats: () => {
+    let gP = 0, gT = 0;
+    const cStats = {};
+    Object.keys(DATA.courses).forEach(k => {
+      cStats[k] = { p: 0, t: 0, title: DATA.courses[k].title };
+    });
+
+    Object.entries(State.att).forEach(([k, v]) => {
+      const c = AttendanceCalc.getCourseKey(k);
+      if (cStats[c] && (v === 'present' || v === 'absent')) {
+        cStats[c].t++;
+        gT++;
+        if (v === 'present') {
+          cStats[c].p++;
+          gP++;
+        }
+      }
+    });
+
+    const gPct = gT === 0 ? 0 : Math.max(0, Math.min(100, Math.round((gP / gT) * 100)));
+    let safeMissCount = 0;
+    let neededCount = 0;
+    const isTargetMet = (gT > 0 && (gP / gT) >= CONFIG.attendanceTarget);
+
+    if (gT > 0) {
+      if (isTargetMet) {
+        safeMissCount = Math.max(0, Math.floor((gP - (CONFIG.attendanceTarget * gT)) / CONFIG.attendanceTarget));
+      } else {
+        neededCount = Math.max(0, Math.ceil(((CONFIG.attendanceTarget * gT) - gP) / (1 - CONFIG.attendanceTarget)));
+      }
+    }
+
+    const activeCourses = Object.entries(cStats)
+      .filter(([, s]) => s.t > 0)
+      .map(([code, s]) => ({ code, title: s.title, pct: Math.round((s.p / s.t) * 100) }))
+      .sort((a, b) => a.pct - b.pct);
+
+    return { 
+      gP, gT, gPct, cStats, isTargetMet, safeMissCount, neededCount,
+      bestSubject: activeCourses.length ? `${Utils.getCourseAbbr(activeCourses[activeCourses.length - 1].code)} (${activeCourses[activeCourses.length - 1].pct}%)` : '--',
+      worstSubject: activeCourses.length ? `${Utils.getCourseAbbr(activeCourses[0].code)} (${activeCourses[0].pct}%)` : '--'
+    };
+  },
+
+  renderBtns: () => {
+    const now = new Date();
+    const todayStr = Utils.dateToIso(now);
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+
+    document.querySelectorAll('.att-mount').forEach(el => {
+      const pkey = el.getAttribute('data-pkey');
+      if (!pkey) return;
+      const val = State.att[pkey];
+      const isGrid = el.closest('td') !== null;
+      const parts = pkey.split('-');
+      
+      let pDate = parts.slice(1, 4).join('-');
+      let pStart = parseInt(parts[4]);
+
+      const isEditable = (pDate === todayStr && currentMins >= pStart && DATA.exceptions[pDate]?.type !== 'holiday');
+      let btnHtml = '';
+
+      if (val === 'present') {
+        btnHtml = isGrid
+          ? `<button type="button" class="w-5 h-5 rounded-md bg-emerald-500/20 text-emerald-600 flex items-center justify-center att-action focus-visible" data-pkey="${pkey}" data-val="null" aria-label="Undo"><i class="fa-solid fa-check text-[10px]"></i></button>`
+          : `<span class="text-emerald-500 text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> Attended</span>${isEditable ? `<button type="button" class="px-2.5 py-1 rounded-lg bg-background border border-border text-muted text-xs font-bold att-action hover:text-primary" data-pkey="${pkey}" data-val="null">Undo</button>` : ''}`;
+      } else if (val === 'absent') {
+        btnHtml = isGrid
+          ? `<button type="button" class="w-5 h-5 rounded-md bg-rose-500/20 text-rose-600 flex items-center justify-center att-action focus-visible" data-pkey="${pkey}" data-val="null" aria-label="Undo"><i class="fa-solid fa-xmark text-[10px]"></i></button>`
+          : `<span class="text-rose-500 text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-xmark"></i> Missed</span>${isEditable ? `<button type="button" class="px-2.5 py-1 rounded-lg bg-background border border-border text-muted text-xs font-bold att-action hover:text-primary" data-pkey="${pkey}" data-val="null">Undo</button>` : ''}`;
+      } else {
+        if (isGrid) {
+          btnHtml = isEditable
+            ? `<div class="flex gap-0.5 rounded-md overflow-hidden"><button type="button" class="w-5 h-5 bg-surface border border-border text-emerald-500 text-[10px] font-bold att-action hover:bg-emerald-500/10" data-pkey="${pkey}" data-val="present">P</button><button type="button" class="w-5 h-5 bg-surface border border-border text-rose-500 text-[10px] font-bold att-action hover:bg-rose-500/10" data-pkey="${pkey}" data-val="absent">A</button></div>`
+            : `<div class="w-5 h-5 rounded-md bg-surface border border-border text-muted flex items-center justify-center opacity-40 text-[10px]"><i class="fa-solid fa-lock"></i></div>`;
+        } else {
+          btnHtml = isEditable
+            ? `<span class="text-muted text-[11px] uppercase font-mono tracking-widest font-bold">Log</span> <div class="flex gap-1.5"><button type="button" class="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 text-xs font-bold att-action hover:bg-emerald-500 hover:text-white transition-all" data-pkey="${pkey}" data-val="present">Present</button><button type="button" class="px-3 py-1.5 rounded-xl bg-rose-500/10 text-rose-600 text-xs font-bold att-action hover:bg-rose-500 hover:text-white transition-all" data-pkey="${pkey}" data-val="absent">Absent</button></div>`
+            : `<span class="text-muted text-xs font-mono font-medium flex items-center gap-1"><i class="fa-solid fa-lock text-[10px]"></i> ${pDate > todayStr ? 'Upcoming' : 'Locked'}</span>`;
+        }
+      }
+      el.innerHTML = btnHtml;
+    });
+  },
+
+  renderAttendanceCalendar: () => {
+    const cont = Utils.dom('hub-attendance-calendar');
+    const monthLabel = Utils.dom('hub-cal-month');
+    if (!cont || !monthLabel) return;
+
+    const y = AttendanceCalc.hubCalYear;
+    const m = AttendanceCalc.hubCalMonth;
+    const date = new Date(y, m, 1);
+    monthLabel.innerText = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+    const firstDay = date.getDay();
+    const totalDays = new Date(y, m + 1, 0).getDate();
+    const prevMonthDays = new Date(y, m, 0).getDate();
+    const todayStr = Utils.dateToIso(new Date());
+
+    cont.innerHTML = '';
+    const frag = Utils.createFrag();
+
+    for (let p = firstDay; p > 0; p--) {
+      const padCell = document.createElement('div');
+      padCell.className = 'min-h-[48px] rounded-xl p-1.5 flex flex-col justify-start items-start text-[11px] font-mono text-muted/20 border border-border/20 bg-surface/20 select-none';
+      padCell.innerHTML = `<span>${prevMonthDays - p + 1}</span>`;
+      frag.appendChild(padCell);
+    }
+
+    for (let d = 1; d <= totalDays; d++) {
+      const curDate = new Date(y, m, d);
+      const dStr = Utils.dateToIso(curDate);
+      const isToday = (dStr === todayStr);
+      const ex = DATA.exceptions[dStr];
+      const isHoliday = ex?.type === 'holiday';
+      const isExam = ex?.type === 'exam';
+      
+      let pCount = 0, aCount = 0;
+      Object.entries(State.att).forEach(([k, v]) => {
+        if (k.includes(dStr)) {
+          if (v === 'present') pCount++;
+          if (v === 'absent') aCount++;
+        }
+      });
+
+      const dayCell = document.createElement('div');
+      dayCell.className = `min-h-[48px] rounded-xl p-1.5 flex flex-col justify-between items-stretch border transition-all duration-200 cursor-pointer relative group hover:scale-[1.02] ${
+        isToday ? 'ring-2 ring-brand ring-offset-2 ring-offset-background border-brand/50 font-bold' : 'border-border'
+      }`;
+
+      let indicatorBadge = '';
+      let bgStyle = 'bg-surface hover:bg-surface-hover hover:border-brand/40';
+
+      if (isHoliday) {
+        bgStyle = 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25';
+        indicatorBadge = `<span class="text-[10px] font-bold font-mono tracking-wider text-amber-600 dark:text-amber-400">HOLIDAY</span>`;
+      } else if (isExam) {
+        bgStyle = 'bg-indigo-500/15 border-indigo-500/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25';
+        const abbr = ex.courseCode ? Utils.getCourseAbbr(ex.courseCode) : '';
+        indicatorBadge = `<span class="font-bold font-mono text-[10px] tracking-wider text-indigo-600 dark:text-indigo-400">${abbr || ex.examCategory || 'EXAM'}</span>`;
+      } else if (pCount > 0 && aCount === 0) {
+        bgStyle = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/20';
+        indicatorBadge = `<span class="font-mono text-[10px] font-bold">${pCount} Attended</span>`;
+      } else if (aCount > 0 && pCount === 0) {
+        bgStyle = 'bg-rose-500/10 border-rose-500/30 text-rose-500 hover:bg-rose-500/20';
+        indicatorBadge = `<span class="font-mono text-[10px] font-bold">${aCount} Missed</span>`;
+      } else if (pCount > 0 && aCount > 0) {
+        bgStyle = 'bg-purple-500/10 border-purple-500/30 text-purple-500 hover:bg-purple-500/20';
+        indicatorBadge = `<span class="font-mono text-[10px] font-bold">${pCount}P • ${aCount}A</span>`;
+      } else {
+        indicatorBadge = `<span class="text-[10px] text-muted/30 font-mono">--</span>`;
+      }
+
+      dayCell.className += ` ${bgStyle}`;
+      dayCell.innerHTML = `
+        <div class="flex justify-between items-center w-full">
+          <span class="text-[11px] font-mono leading-none ${isToday ? 'text-brand font-bold' : 'text-primary'}">${d}</span>
+          ${isToday ? '<span class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse"></span>' : ''}
+        </div>
+        <div class="mt-auto pt-1 w-full overflow-hidden truncate">${indicatorBadge}</div>
+      `;
+
+      dayCell.onclick = () => {
+        let msg = `${dStr}: No classes logged.`;
+        if (isHoliday) {
+          msg = `Holiday: ${ex.title}`;
+        } else if (isExam) {
+          const subAbbr = ex.courseCode ? Utils.getCourseAbbr(ex.courseCode) : '';
+          msg = `${ex.examCategory || 'Exam'}: ${subAbbr} (${ex.time || '10:00 AM - 11:30 AM'})`;
+        } else if (pCount || aCount) {
+          msg = `${pCount} Attended, ${aCount} Missed`;
+        }
+        
+        Notifications.sendCustom(`
+          <div class="text-primary mt-0.5"><i class="fa-solid fa-calendar-day text-xs"></i></div>
+          <div><h4 class="text-xs font-bold text-primary">${dStr}</h4><p class="text-[11px] text-muted mt-0.5 leading-snug">${msg}</p></div>
+        `);
+      };
+
+      frag.appendChild(dayCell);
+    }
+    cont.appendChild(frag);
+  },
+
+  updateHub: () => {
+    const stats = AttendanceCalc.computeStats();
+    const statAttGlobal = Utils.dom('stat-att-global');
+    if (statAttGlobal) statAttGlobal.innerText = stats.gT === 0 ? '--%' : `${stats.gPct}%`;
+
+    const safeEl = Utils.dom('stat-safe-miss');
+    if (safeEl) {
+      if (stats.gT === 0) {
+        safeEl.innerText = '--';
+        safeEl.className = "font-display text-2xl font-bold text-muted";
+      } else if (stats.isTargetMet) {
+        safeEl.innerText = `${stats.safeMissCount}`;
+        safeEl.className = "font-display text-2xl font-bold text-emerald-500";
+      } else {
+        safeEl.innerText = `Need ${stats.neededCount}`;
+        safeEl.className = "font-display text-xl font-bold text-rose-500";
+      }
+    }
+
+    const hubCourses = Utils.dom('hub-courses');
+    if (hubCourses) {
+      const frag = Utils.createFrag();
+      Object.keys(DATA.courses).forEach(c => {
+        const m = DATA.courses[c];
+        const s = stats.cStats[c];
+        const p = s.t === 0 ? 0 : Math.round((s.p / s.t) * 100);
+        const t = TOKENS.colors[m.token] || TOKENS.colors.blue;
+        const statClr = s.t === 0 ? 'text-muted' : (p >= (CONFIG.attendanceTarget * 100) ? 'text-emerald-500' : 'text-rose-500');
+
+        const det = document.createElement('details');
+        det.className = "group card rounded-2xl card-hoverable transition-all outline-none shadow-subtle";
+        det.innerHTML = `
+          <summary class="p-4 cursor-pointer list-none flex flex-col rounded-2xl relative">
+            <div class="flex justify-between items-start mb-2.5">
+              <div class="w-9 h-9 rounded-xl ${t.light} border border-border flex items-center justify-center ${t.text} text-base shadow-subtle group-hover:scale-105 transition-transform"><i class="fa-solid ${m.icon}"></i></div>
+              <span class="text-lg font-display font-bold ${statClr}">${s.t === 0 ? '--%' : p + '%'}</span>
+            </div>
+            <h3 class="font-bold text-primary text-sm leading-tight mb-1 pr-5">${m.title}</h3>
+            <p class="text-xs text-muted font-medium">${m.type}${m.code ? ` • ${m.code}` : ''}</p>
+            <i class="fa-solid fa-chevron-down absolute right-4 bottom-5 text-muted text-xs transition-transform duration-200 group-open:rotate-180"></i>
+          </summary>
+          <div class="px-4 pb-4 pt-2 border-t border-border animate-fade-in text-xs">
+            <div class="flex justify-between items-center mb-3 mt-1">
+                <span class="text-muted"><i class="fa-solid fa-user-chalkboard mr-1"></i> ${m.teacher}</span>
+                <span class="font-mono text-primary bg-background px-2 py-0.5 rounded-lg border border-border">${s.p}/${s.t} logged</span>
+            </div>
+            <button type="button" class="w-full py-2 rounded-xl bg-background border border-border text-primary font-bold text-xs hover:bg-surface-hover hover:border-brand transition-all flex justify-center items-center gap-1.5 cal-trigger" data-course="${c}">
+                <i class="fa-regular fa-calendar text-muted"></i> View Calendar
+            </button>
+          </div>
+        `;
+        frag.appendChild(det);
+      });
+      hubCourses.innerHTML = '';
+      hubCourses.appendChild(frag);
+    }
+
+    const statBest = Utils.dom('stat-best-subject');
+    const statWorst = Utils.dom('stat-worst-subject');
+    if (statBest) statBest.innerText = stats.bestSubject;
+    if (statWorst) statWorst.innerText = stats.worstSubject;
+
+    AttendanceCalc.renderAttendanceCalendar();
+
+    const deadlinesList = Utils.dom('deadlines-list');
+    if (deadlinesList) {
+      const items = [];
+      Object.entries(DATA.exceptions).forEach(([dStr, ex]) => {
+        if (!ex) return;
+        if (ex.type === 'exam') {
+          const subAbbr = ex.courseCode ? Utils.getCourseAbbr(ex.courseCode) : (ex.title || 'Exam');
+          items.push({
+            date: dStr,
+            title: subAbbr,
+            timing: ex.time || '10:00 AM - 11:30 AM',
+            badge: ex.examCategory || 'FAT'
+          });
+        }
+      });
+      if (Array.isArray(DATA.tasks)) {
+        DATA.tasks.filter(t => t && !t.completed).forEach(task => {
+          const subAbbr = Utils.getCourseAbbr(task.courseCode);
+          items.push({
+            date: task.dueDate || '',
+            title: subAbbr,
+            timing: task.title || 'Task Due',
+            badge: 'HW'
+          });
+        });
+      }
+
+      items.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+      if (items.length === 0) {
+        deadlinesList.innerHTML = `<div class="p-6 text-center text-xs text-muted flex flex-col items-center justify-center h-full"><i class="fa-regular fa-calendar-check text-xl mb-1.5 opacity-40"></i>No upcoming tests or tasks.</div>`;
+      } else {
+        deadlinesList.innerHTML = items.map(item => `
+          <div class="flex flex-col gap-1.5 p-3 bg-background border border-border rounded-xl hover:bg-surface-hover transition-colors">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-md font-bold shrink-0 ${item.badge === 'HW' ? 'bg-brand/15 text-brand border border-brand/20' : 'bg-indigo-500/15 text-indigo-500 border border-indigo-500/20'}">${item.badge}</span>
+                <p class="font-bold text-xs text-primary truncate">${item.title}</p>
+              </div>
+              <span class="text-[10px] bg-surface border border-border px-2 py-0.5 rounded-md text-muted font-mono font-bold shrink-0">${item.date}</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-[11px] font-mono text-muted pl-0.5">
+              <i class="fa-regular fa-clock text-[10px] text-brand"></i>
+              <span>${item.timing}</span>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+  }
+};
+
+const TasksManager = {
+  currentFilter: 'all',
+  editingTaskId: null,
+  init: () => {
+    const btnAdd = Utils.dom('btn-add-task');
+    const modal = Utils.dom('modal-task');
+    const btnClose = Utils.dom('btn-close-task');
+    const form = Utils.dom('form-add-task');
+    const courseSelect = Utils.dom('task-course');
+    const btnAutoDate = Utils.dom('btn-task-auto-date');
+
+    if (courseSelect) {
+      courseSelect.innerHTML = Object.entries(DATA.courses)
+        .map(([code, c]) => `<option value="${code}">${Utils.getCourseAbbr(code)} - ${c.title}</option>`).join('');
+      Dropdown.build('task-course');
+    }
+
+    if (btnAutoDate) {
+      btnAutoDate.onclick = () => {
+        const selectedCourse = courseSelect?.value;
+        if (!selectedCourse) return;
+        const nextClass = Utils.getNextClassForCourse(selectedCourse);
+        if (nextClass) {
+          Utils.dom('task-duedate').value = nextClass.dateStr;
+          const parsed = new Date(nextClass.dateStr);
+          Utils.dom('label-task-duedate').innerText = parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          Notifications.sendCustom(`<i class="fa-solid fa-circle-check text-brand text-xs"></i><h4 class="text-xs font-bold text-primary">Set to ${nextClass.dateStr}</h4>`);
+        }
+      };
+    }
+
+    if (btnAdd && modal) {
+      btnAdd.onclick = () => {
+        TasksManager.editingTaskId = null;
+        Utils.dom('task-modal-title').innerText = "New Task";
+        if(form) form.reset();
+        Dropdown.syncText('task-course');
+        Utils.dom('label-task-duedate').innerText = "Select Date";
+        DatePicker.close();
+        if (typeof modal.showModal === 'function') modal.showModal();
+      };
+    }
+    if (btnClose && modal) {
+      btnClose.onclick = () => {
+        DatePicker.close();
+        modal.close();
+      };
+    }
+    if (modal) {
+      modal.addEventListener('click', e => { 
+        if (e.target === modal) {
+          DatePicker.close();
+          modal.close(); 
+        }
+      });
+    }
+
+    if (form) {
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const courseCode = Utils.dom('task-course')?.value;
+        const title = Utils.dom('task-title')?.value.trim();
+        const dueDate = Utils.dom('task-duedate')?.value;
+
+        if (!courseCode || !title || !dueDate) {
+          Notifications.sendCustom(`Please select a due date.`);
+          return;
+        }
+
+        if (TasksManager.editingTaskId) {
+          const task = DATA.tasks.find(t => t.id === TasksManager.editingTaskId);
+          if (task) {
+            task.courseCode = courseCode;
+            task.title = title;
+            task.dueDate = dueDate;
+          }
+          TasksManager.editingTaskId = null;
+        } else {
+          const newTask = {
+            id: 'task_' + Date.now(),
+            courseCode,
+            title,
+            dueDate,
+            completed: false
+          };
+          DATA.tasks.push(newTask);
+          Notifications.addNotification({
+            id: 'notif_t_' + newTask.id,
+            title: 'Task Added',
+            body: `${newTask.title} (${Utils.getCourseAbbr(newTask.courseCode)})`,
+            type: 'task',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+        }
+
+        State.saveTasks();
+        form.reset();
+        Dropdown.syncText('task-course');
+        Utils.dom('label-task-duedate').innerText = "Select Date";
+        DatePicker.close();
+        modal.close();
+        TasksManager.render();
+        Notifications.checkReminders();
+        AttendanceCalc.updateHub();
+      };
+    }
+
+    document.querySelectorAll('.filter-task-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.filter-task-btn').forEach(b => {
+          b.className = "px-3 py-1.5 rounded-xl text-xs font-bold text-muted hover:bg-surface-hover filter-task-btn";
+        });
+        btn.className = "px-3 py-1.5 rounded-xl text-xs font-bold bg-primary text-background filter-task-btn";
+        TasksManager.currentFilter = btn.getAttribute('data-filter') || 'all';
+        TasksManager.render();
+      };
+    });
+  },
+
+  editTask: (taskId) => {
+    const task = DATA.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    TasksManager.editingTaskId = taskId;
+    Utils.dom('task-modal-title').innerText = "Edit Task";
+    Utils.dom('task-course').value = task.courseCode;
+    Dropdown.build('task-course');
+    Utils.dom('task-title').value = task.title;
+    Utils.dom('task-duedate').value = task.dueDate;
+    if (task.dueDate) {
+       const parsed = new Date(task.dueDate);
+       Utils.dom('label-task-duedate').innerText = parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } else {
+       Utils.dom('label-task-duedate').innerText = "Select Date";
+    }
+    
+    const modal = Utils.dom('modal-task');
+    DatePicker.close();
+    if (modal && typeof modal.showModal === 'function') modal.showModal();
+  },
+
+  toggleComplete: (taskId) => {
+    const task = DATA.tasks.find(t => t.id === taskId);
+    if (task) {
+      task.completed = !task.completed;
+      State.saveTasks();
+      TasksManager.render();
+      AttendanceCalc.updateHub();
+    }
+  },
+
+  deleteTask: (taskId) => {
+    DATA.tasks = DATA.tasks.filter(t => t.id !== taskId);
+    State.saveTasks();
+    TasksManager.render();
+    AttendanceCalc.updateHub();
+  },
+
+  render: () => {
+    const container = Utils.dom('tasks-container');
+    const statPending = Utils.dom('stat-tasks-pending');
+    const statDueSoon = Utils.dom('stat-tasks-due-soon');
+    const statCompleted = Utils.dom('stat-tasks-completed');
+    const countInfo = Utils.dom('tasks-count-info');
+
+    if (!container) return;
+
+    const now = new Date();
+    const todayStr = Utils.dateToIso(now);
+    const in7Days = new Date();
+    in7Days.setDate(now.getDate() + 7);
+    const in7DaysStr = Utils.dateToIso(in7Days);
+
+    const pending = DATA.tasks.filter(t => t && !t.completed);
+    const completed = DATA.tasks.filter(t => t && t.completed);
+    const dueSoon = pending.filter(t => t.dueDate >= todayStr && t.dueDate <= in7DaysStr);
+
+    if (statPending) statPending.innerText = pending.length;
+    if (statDueSoon) statDueSoon.innerText = dueSoon.length;
+    if (statCompleted) statCompleted.innerText = completed.length;
+    if (countInfo) countInfo.innerText = `${DATA.tasks.length} total`;
+
+    let filtered = DATA.tasks;
+    if (TasksManager.currentFilter === 'pending') filtered = pending;
+    else if (TasksManager.currentFilter === 'completed') filtered = completed;
+
+    filtered.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="p-8 text-center border border-dashed border-border rounded-xl">
+          <i class="fa-solid fa-clipboard-check text-2xl text-muted/40 mb-1.5"></i>
+          <p class="text-xs font-bold text-muted">No tasks in this view.</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = filtered.map(task => {
+      const course = DATA.courses[task.courseCode] || { title: task.courseCode, token: 'blue', teacher: 'Prof' };
+      const token = TOKENS.colors[course.token] || TOKENS.colors.blue;
+      const subAbbr = Utils.getCourseAbbr(task.courseCode);
+      const isPast = task.dueDate < todayStr && !task.completed;
+
+      return `
+        <article class="p-3.5 bg-surface border ${task.completed ? 'border-border/60 opacity-60' : 'border-border'} rounded-xl flex items-center justify-between gap-3 transition-all hover:border-brand/40 shadow-subtle group">
+          <div class="flex items-center gap-3 min-w-0">
+            <button type="button" class="w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${task.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-border bg-background text-transparent hover:border-brand'}" onclick="TasksManager.toggleComplete('${task.id}')">
+              <i class="fa-solid fa-check text-[10px]"></i>
+            </button>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-lg ${token.light} ${token.text}">${subAbbr}</span>
+                <h4 class="text-xs font-bold text-primary truncate ${task.completed ? 'line-through text-muted' : ''}">${task.title}</h4>
+              </div>
+              <span class="text-[11px] font-mono block mt-1 ${isPast ? 'text-rose-500 font-bold' : 'text-muted'}">${task.dueDate} ${isPast ? '• Overdue' : ''}</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button type="button" class="text-muted hover:text-brand p-1.5 rounded-lg transition-colors" onclick="TasksManager.editTask('${task.id}')" aria-label="Edit">
+              <i class="fa-solid fa-pen text-xs"></i>
+            </button>
+            <button type="button" class="text-muted hover:text-rose-500 p-1.5 rounded-lg transition-colors" onclick="TasksManager.deleteTask('${task.id}')" aria-label="Delete">
+              <i class="fa-solid fa-trash-can text-xs"></i>
+            </button>
+          </div>
+        </article>`;
+    }).join('');
+  }
+};
+
+const HolidayManager = {
+  editingDate: null,
+  init: () => {
+    const btnOpen = Utils.dom('btn-manage-holidays');
+    const btnClose = Utils.dom('btn-close-holidays');
+    const modal = Utils.dom('modal-holidays');
+    const form = Utils.dom('form-add-holiday');
+    const typeInp = Utils.dom('input-holiday-type');
+    const examExtraFields = Utils.dom('exam-extra-fields');
+    const examCourseSelect = Utils.dom('input-exam-course');
+    const titleInp = Utils.dom('input-holiday-title');
+    const btnCancelEdit = Utils.dom('btn-cancel-edit-holiday');
+
+    if (examCourseSelect) {
+      examCourseSelect.innerHTML = Object.entries(DATA.courses)
+        .map(([code, c]) => `<option value="${code}">${Utils.getCourseAbbr(code)} - ${c.title}</option>`).join('');
+    }
+
+    const updateFormState = () => {
+      if (!typeInp) return;
+      if (typeInp.value === 'exam') {
+        if (examExtraFields) examExtraFields.classList.remove('hidden');
+        if (titleInp) {
+          titleInp.placeholder = "Optional Note (e.g. Modules 1 & 2)";
+          titleInp.required = false;
+        }
+      } else {
+        if (examExtraFields) examExtraFields.classList.add('hidden');
+        if (titleInp) {
+          titleInp.placeholder = "Holiday Name (e.g. Diwali)";
+          titleInp.required = true;
+        }
+      }
+    };
+
+    if (typeInp) {
+      typeInp.onchange = updateFormState;
+    }
+
+    const resetForm = () => {
+      HolidayManager.editingDate = null;
+      Utils.dom('holiday-form-mode-title').innerText = "Add Exception or Test";
+      if (btnCancelEdit) btnCancelEdit.classList.add('hidden');
+      Utils.dom('btn-submit-holiday').innerText = "Save Entry";
+      if(form) form.reset();
+      Dropdown.syncText('input-holiday-type');
+      Dropdown.syncText('input-exam-category');
+      Dropdown.syncText('input-exam-course');
+      updateFormState();
+      const lbl = Utils.dom('label-holiday-date');
+      if (lbl) lbl.innerText = "Select Date";
+      DatePicker.close();
+    };
+
+    if (btnCancelEdit) btnCancelEdit.onclick = resetForm;
+
+    if (btnOpen && modal) {
+      btnOpen.onclick = () => {
+        HolidayManager.renderList();
+        resetForm();
+        DatePicker.close();
+        if (typeof modal.showModal === 'function') modal.showModal();
+      };
+    }
+    if (btnClose && modal) {
+      btnClose.onclick = () => {
+        DatePicker.close();
+        modal.close();
+      };
+    }
+    if (modal) {
+      modal.addEventListener('click', e => { 
+        if (e.target === modal) {
+          DatePicker.close();
+          modal.close(); 
+        }
+      });
+    }
+
+    if (form) {
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const dateInp = Utils.dom('input-holiday-date');
+        const holidayType = typeInp ? typeInp.value : 'holiday';
+
+        if (!dateInp || !dateInp.value) {
+            Notifications.sendCustom(`Please select a date.`);
+            return;
+        }
+
+        let examPayload = null;
+        let entryTitle = titleInp?.value.trim();
+
+        if (holidayType === 'exam') {
+          const cat = Utils.dom('input-exam-category')?.value || 'FAT';
+          const course = Utils.dom('input-exam-course')?.value || '';
+          const sTime = Utils.dom('input-exam-stime')?.value || '10:00';
+          const eTime = Utils.dom('input-exam-etime')?.value || '11:30';
+          
+          const sMins = Utils.timeStringToMins(sTime);
+          const eMins = Utils.timeStringToMins(eTime);
+          const formattedTime = `${Utils.formatMins(sMins)} - ${Utils.formatMins(eMins)}`;
+          const fullCourseTitle = DATA.courses[course]?.title || 'Subject Exam';
+
+          if (!entryTitle) {
+            entryTitle = fullCourseTitle;
+          }
+
+          examPayload = {
+            examCategory: cat,
+            courseCode: course,
+            time: formattedTime,
+            sTime, eTime, 
+            title: fullCourseTitle
+          };
+        } else {
+          if (!entryTitle) entryTitle = 'Official Holiday';
+        }
+
+        if (HolidayManager.editingDate && HolidayManager.editingDate !== dateInp.value) {
+          HolidayManager.removeException(HolidayManager.editingDate, false);
+        }
+
+        HolidayManager.addException(
+          dateInp.value, 
+          holidayType, 
+          entryTitle,
+          examPayload
+        );
+
+        resetForm();
+        HolidayManager.renderList();
+      };
+    }
+    
+    Dropdown.build('input-holiday-type');
+    Dropdown.build('input-exam-category');
+    Dropdown.build('input-exam-course');
+  },
+
+  editException: (dStr) => {
+    const item = DATA.exceptions[dStr];
+    if (!item) return;
+
+    HolidayManager.editingDate = dStr;
+    Utils.dom('holiday-form-mode-title').innerText = "Edit Entry";
+    Utils.dom('btn-cancel-edit-holiday').classList.remove('hidden');
+    Utils.dom('btn-submit-holiday').innerText = "Update";
+    
+    Utils.dom('input-holiday-date').value = dStr;
+    const parsed = new Date(dStr);
+    Utils.dom('label-holiday-date').innerText = parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    Utils.dom('input-holiday-type').value = item.type;
+    Dropdown.build('input-holiday-type');
+    
+    if (item.type === 'exam') {
+      Utils.dom('exam-extra-fields').classList.remove('hidden');
+      Utils.dom('input-exam-category').value = item.examCategory || 'FAT';
+      Dropdown.build('input-exam-category');
+      Utils.dom('input-exam-course').value = item.courseCode || '';
+      Dropdown.build('input-exam-course');
+      Utils.dom('input-exam-stime').value = item.sTime || '10:00';
+      Utils.dom('input-exam-etime').value = item.eTime || '11:30';
+      
+      const fullCourseTitle = DATA.courses[item.courseCode]?.title;
+      Utils.dom('input-holiday-title').value = (item.title && item.title !== fullCourseTitle) ? item.title : '';
+      Utils.dom('input-holiday-title').placeholder = "Optional Note (e.g. Modules 1 & 2)";
+      Utils.dom('input-holiday-title').required = false;
+    } else {
+      Utils.dom('exam-extra-fields').classList.add('hidden');
+      Utils.dom('input-holiday-title').value = item.title;
+      Utils.dom('input-holiday-title').placeholder = "Holiday Name";
+      Utils.dom('input-holiday-title').required = true;
+    }
+    DatePicker.close();
+  },
+
+  renderList: () => {
+    const list = Utils.dom('list-holidays');
+    if (!list) return;
+    list.innerHTML = '';
+    const entries = Object.entries(DATA.exceptions).sort(([a], [b]) => a.localeCompare(b));
+    if (entries.length === 0) {
+      list.innerHTML = `<li class="p-4 text-center text-xs text-muted">No custom exceptions marked.</li>`;
+      return;
+    }
+    entries.forEach(([dStr, item]) => {
+      const isExam = item.type === 'exam';
+      const subAbbr = item.courseCode ? Utils.getCourseAbbr(item.courseCode) : '';
+
+      const li = document.createElement('li');
+      li.className = 'flex justify-between items-center bg-surface p-2.5 rounded-xl border border-border text-xs group';
+      li.innerHTML = `
+        <div class="flex items-center gap-2 min-w-0 pr-2 cursor-pointer" onclick="HolidayManager.editException('${dStr}')">
+          <span class="w-2 h-2 rounded-full ${isExam ? 'bg-indigo-500' : 'bg-amber-500'} shrink-0"></span>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              ${isExam ? `<span class="bg-indigo-500/15 text-indigo-500 font-bold px-1.5 py-0.5 rounded-lg text-[10px] font-mono">${item.examCategory || 'Exam'}</span>` : ''}
+              <span class="font-bold text-primary truncate group-hover:text-brand transition-colors">${subAbbr || item.title}</span>
+            </div>
+            <span class="block text-[10px] font-mono text-muted mt-0.5">${dStr} • ${item.time || 'All Day'}</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+            <button type="button" class="text-muted hover:text-brand p-1.5 rounded-lg transition-colors active:scale-95" onclick="HolidayManager.editException('${dStr}')" aria-label="Edit">
+            <i class="fa-solid fa-pen text-xs"></i>
+            </button>
+            <button type="button" class="text-rose-500 hover:text-rose-600 p-1.5 rounded-lg transition-colors active:scale-95" onclick="HolidayManager.removeException('${dStr}')" aria-label="Delete">
+            <i class="fa-solid fa-trash-can text-xs"></i>
+            </button>
+        </div>
+      `;
+      list.appendChild(li);
+    });
+  },
+
+  addException: (dStr, type, title, examData = null) => {
+    const entry = { type, title };
+    if (examData) {
+      Object.assign(entry, examData);
+    }
+    DATA.exceptions[dStr] = entry;
+
+    if (type === 'holiday') {
+      Object.keys(State.att).forEach(key => {
+        if (key.includes(dStr)) delete State.att[key];
+      });
+      State.save();
+    }
+
+    localStorage.setItem(CONFIG.exceptionsKey, JSON.stringify(DATA.exceptions));
+    Sync.markDirty();
+    window.dispatchEvent(new Event('attendance-updated'));
+    Schedule.render();
+    Today.render();
+    Hostel.render();
+    Notifications.checkReminders();
+
+    const notifTitle = type === 'exam' 
+      ? `Exam Scheduled: ${entry.examCategory || 'Test'} (${entry.courseCode ? Utils.getCourseAbbr(entry.courseCode) : ''})` 
+      : 'Holiday Added';
+
+    Notifications.addNotification({
+      id: 'notif_ex_' + Date.now(),
+      title: notifTitle,
+      body: `${entry.time || dStr}`,
+      type: type,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    });
+  },
+
+  removeException: (dStr, rerender = true) => {
+    delete DATA.exceptions[dStr];
+    localStorage.setItem(CONFIG.exceptionsKey, JSON.stringify(DATA.exceptions));
+    Sync.markDirty();
+    if (rerender) {
+      State.seed();
+      window.dispatchEvent(new Event('attendance-updated'));
+      Schedule.render();
+      Today.render();
+      Hostel.render();
+      Notifications.checkReminders();
+      HolidayManager.renderList();
+    }
+  }
+};
+
+const Calendar = {
+  currentCourse: null,
+  currentMonth: new Date().getMonth(),
+  currentYear: new Date().getFullYear(),
+  init: () => {
+    const modal = Utils.dom('modal-calendar');
+    const btnClose = Utils.dom('btn-close-cal');
+    const btnPrev = Utils.dom('btn-cal-prev');
+    const btnNext = Utils.dom('btn-cal-next');
+
+    if (btnClose && modal) btnClose.onclick = () => modal.close();
+    if (modal) modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+
+    if (btnPrev) {
+      btnPrev.onclick = () => {
+        Calendar.currentMonth--;
+        if (Calendar.currentMonth < 0) { Calendar.currentMonth = 11; Calendar.currentYear--; }
+        Calendar.renderGrid();
+      };
+    }
+    if (btnNext) {
+      btnNext.onclick = () => {
+        Calendar.currentMonth++;
+        if (Calendar.currentMonth > 11) { Calendar.currentMonth = 0; Calendar.currentYear++; }
+        Calendar.renderGrid();
+      };
+    }
+  },
+  open: (courseCode) => {
+    const modal = Utils.dom('modal-calendar');
+    const titleEl = Utils.dom('cal-title');
+    const codeEl = Utils.dom('cal-code');
+    const meta = DATA.courses[courseCode];
+    if (!meta || !modal) return;
+
+    Calendar.currentCourse = courseCode;
+    if (titleEl) titleEl.innerText = meta.title;
+    if (codeEl) codeEl.innerText = meta.code || courseCode;
+
+    Calendar.renderGrid();
+    if (typeof modal.showModal === 'function') modal.showModal();
+  },
+  renderGrid: () => {
+    const grid = Utils.dom('cal-grid');
+    const monthEl = Utils.dom('cal-month');
+    if (!grid || !monthEl || !Calendar.currentCourse) return;
+
+    const date = new Date(Calendar.currentYear, Calendar.currentMonth, 1);
+    monthEl.innerText = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    const firstDayIndex = date.getDay();
+    const lastDay = new Date(Calendar.currentYear, Calendar.currentMonth + 1, 0).getDate();
+    const prevLastDay = new Date(Calendar.currentYear, Calendar.currentMonth, 0).getDate();
+
+    grid.innerHTML = '';
+    const frag = Utils.createFrag();
+
+    for (let x = firstDayIndex; x > 0; x--) {
+      const div = document.createElement('div');
+      div.className = 'aspect-square rounded-xl flex items-center justify-center text-[11px] text-muted/20';
+      div.innerText = prevLastDay - x + 1;
+      frag.appendChild(div);
+    }
+
+    for (let i = 1; i <= lastDay; i++) {
+      const cellDate = new Date(Calendar.currentYear, Calendar.currentMonth, i);
+      const dStr = Utils.dateToIso(cellDate);
+      const ex = DATA.exceptions[dStr];
+
+      let status = null;
+      Object.entries(State.att).forEach(([k, v]) => {
+        if (k.startsWith(`${Calendar.currentCourse}-${dStr}`)) status = v;
+      });
+
+      const cell = document.createElement('div');
+      cell.className = 'aspect-square flex flex-col items-center justify-center text-[11px] font-bold rounded-xl relative border transition-all';
+      cell.innerHTML = `<span>${i}</span>`;
+
+      if (ex?.type === 'holiday') {
+        cell.className += ' bg-amber-500/15 text-amber-500 border-amber-500/30';
+      } else if (ex?.type === 'exam') {
+        cell.className += ' bg-indigo-500/15 text-indigo-500 border-indigo-500/30';
+      } else if (status === 'present') {
+        cell.className += ' bg-emerald-500/20 text-emerald-500 border-emerald-500/40';
+      } else if (status === 'absent') {
+        cell.className += ' bg-rose-500/20 text-rose-500 border-rose-500/40';
+      } else {
+        cell.className += ' border-border/60 text-primary';
+      }
+
+      frag.appendChild(cell);
+    }
+    grid.appendChild(frag);
+  }
+};
+
+const Notifications = {
+  init: () => {
+    const btn = Utils.dom('btn-notif');
+    const modal = Utils.dom('modal-notif-center');
+    const btnClose = Utils.dom('btn-close-notif-center');
+    const btnClear = Utils.dom('btn-clear-notifs');
+
+    if (btn && modal) {
+      btn.onclick = () => {
+        Notifications.renderModal();
+        if (typeof modal.showModal === 'function') modal.showModal();
+      };
+    }
+    if (btnClose && modal) btnClose.onclick = () => modal.close();
+    if (modal) modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+
+    if (btnClear) {
+      btnClear.onclick = () => {
+        DATA.notifications = [];
+        State.saveNotifs();
+        Notifications.renderModal();
+        Notifications.updateBadge();
+      };
+    }
+
+    Notifications.checkReminders();
+    Notifications.updateBadge();
+  },
+
+  addNotification: (notif) => {
+    const exists = DATA.notifications.some(n => n.id === notif.id);
+    if (!exists) {
+      DATA.notifications.unshift(notif);
+      State.saveNotifs();
+      Notifications.updateBadge();
+      Notifications.sendCustom(`
+        <div class="text-brand mt-0.5"><i class="fa-solid fa-bell text-xs"></i></div>
+        <div><h4 class="text-xs font-bold text-primary">${notif.title}</h4><p class="text-[11px] text-muted mt-0.5 leading-snug">${notif.body}</p></div>
+      `);
+    }
+  },
+
+  removeNotification: (id) => {
+    DATA.notifications = DATA.notifications.filter(n => n.id !== id);
+    State.saveNotifs();
+    Notifications.renderModal();
+    Notifications.updateBadge();
+  },
+
+  updateBadge: () => {
+    const badge = Utils.dom('notif-badge');
+    if (badge) {
+      if (DATA.notifications.length > 0) badge.classList.remove('hidden');
+      else badge.classList.add('hidden');
+    }
+  },
+
+  checkReminders: () => {
+    const now = new Date();
+    const tmrw = new Date();
+    tmrw.setDate(now.getDate() + 1);
+    const tmrwStr = Utils.dateToIso(tmrw);
+
+    DATA.tasks.forEach(task => {
+      if (!task.completed && task.dueDate === tmrwStr) {
+        const subAbbr = Utils.getCourseAbbr(task.courseCode);
+        Notifications.addNotification({
+          id: `reminder_hw_${task.id}_${tmrwStr}`,
+          title: `Due Tomorrow: ${subAbbr}`,
+          body: task.title,
+          type: 'reminder',
+          time: 'Reminder'
+        });
+      }
+    });
+
+    Object.entries(DATA.exceptions).forEach(([dStr, ex]) => {
+      if (ex.type === 'exam' && dStr === tmrwStr) {
+        const subAbbr = ex.courseCode ? Utils.getCourseAbbr(ex.courseCode) : '';
+        const testName = ex.examCategory || 'Test';
+
+        Notifications.addNotification({
+          id: `reminder_exam_${dStr}`,
+          title: `Exam: ${testName} (${subAbbr})`,
+          body: `${ex.time || '10:00 AM - 11:30 AM'}`,
+          type: 'exam',
+          time: 'Reminder'
+        });
+      }
+    });
+  },
+
+  renderModal: () => {
+    const list = Utils.dom('notif-center-list');
+    if (!list) return;
+
+    if (DATA.notifications.length === 0) {
+      list.innerHTML = `
+        <div class="p-8 text-center">
+          <i class="fa-regular fa-bell-slash text-2xl text-muted/40 mb-1.5"></i>
+          <p class="text-xs font-bold text-muted">No notifications right now.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = DATA.notifications.map(n => `
+      <div class="p-3 bg-background border border-border rounded-xl flex items-start justify-between gap-3 group">
+        <div class="flex items-start gap-2.5 min-w-0">
+          <span class="w-2 h-2 rounded-full mt-1.5 ${n.type === 'exam' ? 'bg-indigo-500' : (n.type === 'reminder' ? 'bg-rose-500' : 'bg-brand')} shrink-0"></span>
+          <div class="min-w-0">
+            <h4 class="text-xs font-bold text-primary leading-tight">${n.title}</h4>
+            <p class="text-[11px] text-muted font-sans mt-0.5 leading-snug">${n.body}</p>
+            <span class="text-[10px] font-mono text-muted/70 block mt-1">${n.time || ''}</span>
+          </div>
+        </div>
+        <button type="button" class="text-muted hover:text-rose-500 p-1 rounded-lg transition-colors" onclick="Notifications.removeNotification('${n.id}')">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+    `).join('');
+  },
+
+  sendCustom: (innerHTML) => {
+    const toastContainer = Utils.dom('toast-container');
+    if (!toastContainer) return;
+    const toast = document.createElement('div');
+    toast.className = "bg-surface/95 backdrop-blur-sm border border-border p-2.5 rounded-xl shadow-float flex items-center gap-2 pointer-events-auto animate-slide-up w-fit max-w-[280px]";
+    toast.innerHTML = innerHTML;
+    toastContainer.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.2s';
+      setTimeout(() => toast.remove(), 200);
+    }, 2800);
+  }
+};
+
+const Engine = {
+  Semester: {
+    update: () => {
+      const start = new Date(CONFIG.semesterStart);
+      const end = new Date(CONFIG.semesterEnd);
+      const now = new Date();
+      const totalMs = end - start;
+      const elapsMs = now - start;
+      const weeks = Math.floor(elapsMs / (1000 * 60 * 60 * 24 * 7)) + 1;
+      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+      let pct = Math.max(0, Math.min(100, (elapsMs / totalMs) * 100));
+
+      const el1 = Utils.dom('stat-sem-week'); if (el1) el1.innerText = `Week ${weeks} of ${Math.ceil(totalMs / (1000 * 60 * 60 * 24 * 7))}`;
+      const el2 = Utils.dom('stat-sem-bar'); if (el2) el2.style.width = `${pct}%`;
+      const el3 = Utils.dom('stat-sem-days'); if (el3) el3.innerText = `${daysLeft > 0 ? daysLeft + ' days left' : 'Complete'}`;
+    }
+  }
+};
+
+const Today = {
+  render: () => {
+    const now = new Date();
+    const currMins = now.getHours() * 60 + now.getMinutes();
+    const dayNum = now.getDay();
+    const todayStr = Utils.dateToIso(now);
+    
+    const headerDate = Utils.dom('header-date');
+    if (headerDate) headerDate.innerText = now.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+
+    const cNow = Utils.dom('card-now');
+    const cNext = Utils.dom('card-next');
+    const cLater = Utils.dom('list-later');
+    const statClassesLeft = Utils.dom('stat-classes-left');
+    const statProgressBar = Utils.dom('stat-sem-bar');
+
+    if (!cNow || !cNext || !cLater || !statClassesLeft || !statProgressBar) return;
+
+    const laundryStatus = DATA.hostel.laundry[dayNum];
+    const hostelLaundrySummary = Utils.dom('hostel-laundry-today-summary');
+    const hostelLaundryHostelTab = Utils.dom('hostel-laundry-hostel-tab');
+
+    const laundryMarkup = laundryStatus.active
+      ? `<div class="space-y-1"><span class="text-emerald-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> ${laundryStatus.desc}</span></div>`
+      : `<div class="space-y-1"><span class="text-amber-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-calendar-xmark"></i> ${laundryStatus.desc}</span></div>`;
+
+    if (hostelLaundrySummary) hostelLaundrySummary.innerHTML = laundryMarkup;
+    if (hostelLaundryHostelTab) hostelLaundryHostelTab.innerHTML = laundryMarkup;
+
+    const hostelTodayMenu = DATA.hostel.menu[dayNum];
+    const isHoliday = DATA.exceptions[todayStr]?.type === 'holiday';
+    const isWeekend = dayNum === 0 || dayNum === 6;
+    
+    const hostelActualIsWeekend = isWeekend || isHoliday;
+    const hostelActualTimings = hostelActualIsWeekend ? DATA.hostel.timings.weekend : DATA.hostel.timings.weekday;
+    let hostelNextMeal = hostelActualTimings.find(t => currMins < t.e);
+    let hostelNextMenuTxt = '';
+    let isDinnerTime = false;
+    let isTomorrow = false;
+
+    if (hostelNextMeal) {
+      let mealKey = hostelNextMeal.name.toLowerCase();
+      if (mealKey.includes('snack')) mealKey = 'snacks';
+      if (mealKey === 'dinner') isDinnerTime = true;
+      hostelNextMenuTxt = hostelTodayMenu[mealKey] || 'Hostel mess scheduled';
+    } else {
+      isTomorrow = true;
+      const tmrw = new Date(now);
+      tmrw.setDate(now.getDate() + 1);
+      const tmrwDay = tmrw.getDay();
+      const tmrwStr = Utils.dateToIso(tmrw);
+      const tmrwIsHoliday = DATA.exceptions[tmrwStr]?.type === 'holiday';
+      const tmrwIsWeekend = tmrwDay === 0 || tmrwDay === 6;
+      const tmrwUsesWeekendTimings = tmrwIsWeekend || tmrwIsHoliday;
+
+      const tmrwTimings = tmrwUsesWeekendTimings ? DATA.hostel.timings.weekend : DATA.hostel.timings.weekday;
+      hostelNextMeal = tmrwTimings[0];
+      hostelNextMenuTxt = DATA.hostel.menu[tmrwDay].breakfast;
+    }
+
+    const hostelHeaderCont = Utils.dom('hostel-meal-header-container');
+    const hostelNextTitleEl = Utils.dom('hostel-next-title');
+    const hostelNextMenuEl = Utils.dom('hostel-next-menu');
+    
+    if (hostelHeaderCont) {
+      hostelHeaderCont.innerHTML = `
+        <span class="bg-white/20 backdrop-blur-md border border-white/25 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 shadow-sm shrink-0 whitespace-nowrap">
+          <div class="w-1.5 h-1.5 rounded-full ${isTomorrow ? 'bg-amber-300' : 'bg-white'} animate-pulse"></div> ${isTomorrow ? "Tomorrow" : "Next Meal"}
+        </span>
+        <span class="font-mono text-xs font-bold text-white/95 bg-black/25 px-2.5 py-1 rounded-lg backdrop-blur-md border border-white/10 shadow-sm shrink-0 whitespace-nowrap">
+          ${hostelNextMeal.time}
+        </span>
+      `;
+    }
+
+    if (hostelNextTitleEl) hostelNextTitleEl.innerText = hostelNextMeal.name;
+    
+    if (hostelNextMenuEl) {
+      if (isDinnerTime && hostelTodayMenu.dessert) {
+        hostelNextMenuEl.innerHTML = `
+          <div class="space-y-2">
+            <div>${Utils.renderMealPills(hostelNextMenuTxt, true)}</div>
+            <div class="pt-1.5 border-t border-white/20">
+              <div class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-400 text-neutral-900 shadow-sm">
+                ${hostelTodayMenu.dessert}
+              </div>
+            </div>
+          </div>`;
+      } else {
+        hostelNextMenuEl.innerHTML = Utils.renderMealPills(hostelNextMenuTxt, true);
+      }
+    }
+
+    const isException = DATA.exceptions[todayStr];
+    if (dayNum === 1 || dayNum === 2 || isException?.type === 'holiday') {
+      const isHol = isException?.type === 'holiday';
+      const msg = isException?.title || "Free Day";
+      cNow.className = "card rounded-2xl card-hoverable p-8 flex flex-col justify-center items-center text-center min-h-[220px] shadow-subtle";
+      cNow.innerHTML = `
+        <div class="relative z-10 flex flex-col items-center justify-center">
+            <i class="fa-solid ${isHol ? 'fa-umbrella-beach text-rose-500' : 'fa-mug-hot text-brand'} text-4xl mb-3"></i>
+            <h3 class="text-xl font-display font-bold text-primary tracking-tight">${msg}</h3>
+            <p class="text-muted text-xs mt-1 font-medium">${isHol ? 'Official Holiday' : 'No academic classes today'}</p>
+        </div>`;
+      cNext.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center p-4 text-muted"><i class="fa-solid fa-mug-hot text-xl mb-1.5"></i><p class="text-xs">Done for the day</p></div>`;
+      cLater.innerHTML = `<div class="p-4 text-center text-xs text-muted">Nothing else scheduled.</div>`;
+      statClassesLeft.innerText = "0 left";
+      statProgressBar.style.width = "100%";
+      return;
+    }
+
+    const sched = DATA.timetable[dayNum] || [];
+    let curP = null, nxtP = null, latP = [], cLeft = 0, startM = 1440, endM = 0;
+
+    sched.forEach(p => {
+      if (p.s < startM) startM = p.s;
+      if (p.e > endM) endM = p.e;
+      if (currMins >= p.s && currMins < p.e) curP = p;
+      else if (p.s > currMins) {
+        if (p.c !== 'LUNCH' && p.c !== 'LIBRARY') cLeft++;
+        if (!nxtP) nxtP = p; else latP.push(p);
+      }
+    });
+
+    statClassesLeft.innerText = `${cLeft} left`;
+    statProgressBar.style.width = currMins > endM ? '100%' : (currMins > startM ? `${((currMins - startM) / (endM - startM)) * 100}%` : '0%');
+
+    if (curP) {
+      if (curP.c === 'LUNCH' || curP.c === 'LIBRARY') {
+        cNow.className = `card rounded-2xl card-hoverable p-6 min-h-[220px] flex flex-col shadow-subtle`;
+        cNow.innerHTML = `
+          <div class="flex justify-between items-start mb-4">
+            <span class="bg-surface-hover text-muted border border-border px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase"><i class="fa-solid fa-mug-saucer mr-1"></i> Break</span>
+            <span class="font-mono text-xs font-bold text-muted">${Utils.formatMins(curP.s)} - ${Utils.formatMins(curP.e)}</span>
+          </div>
+          <h3 class="font-display text-2xl font-bold mb-1 text-primary">${curP.c === 'LUNCH' ? 'Lunch Break' : 'Library / Self Study'}</h3>
+          <p class="text-xs text-muted mt-auto">Ends in ${curP.e - currMins} mins</p>
+        `;
+      } else {
+        const meta = DATA.courses[curP.c];
+        if (meta) {
+          const t = TOKENS.colors[meta.token] || TOKENS.colors.blue;
+          cNow.className = `card rounded-2xl card-hoverable p-6 min-h-[220px] flex flex-col relative overflow-hidden ${t.bg} text-white shadow-glow group`;
+          cNow.style.setProperty('--glow-color', t.hex);
+          cNow.innerHTML = `
+            <div class="relative z-10 flex flex-col h-full">
+              <div class="flex justify-between items-start mb-3">
+                <span class="bg-white/20 backdrop-blur-md text-white px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div> Live Now</span>
+                <span class="font-mono text-xs font-bold text-white/90 bg-black/15 px-2 py-0.5 rounded-lg">${Utils.formatMins(curP.s)} - ${Utils.formatMins(curP.e)}</span>
+              </div>
+              <h3 class="font-display text-2xl font-bold mb-4 mt-auto text-white tracking-tight">${curP.name || meta.title}</h3>
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-auto">
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="text-white text-xs font-semibold bg-black/15 px-2.5 py-1 rounded-lg border border-white/10"><i class="fa-solid fa-location-dot mr-1"></i>${curP.r}</div>
+                  <div class="text-white text-xs font-semibold bg-black/15 px-2.5 py-1 rounded-lg border border-white/10"><i class="fa-solid fa-user-chalkboard mr-1"></i>${curP.teacher || meta.teacher}</div>
+                </div>
+                <div class="text-right">
+                  <p class="text-[10px] font-mono uppercase opacity-80">Ends in</p>
+                  <p class="text-lg font-bold font-mono leading-none">${curP.e - currMins}m</p>
+                </div>
+              </div>
+            </div>`;
+        }
+      }
+    } else {
+      cNow.className = "card rounded-2xl card-hoverable p-8 flex flex-col justify-center items-center text-center min-h-[220px] shadow-subtle";
+      cNow.innerHTML = `<p class="text-muted font-bold text-sm">Free Period</p>`;
+    }
+
+    if (nxtP) {
+      const isBrk = nxtP.c === 'LUNCH' || nxtP.c === 'LIBRARY';
+      const m = isBrk ? null : DATA.courses[nxtP.c];
+      const t = isBrk ? TOKENS.colors.slate : (m ? TOKENS.colors[m.token] : TOKENS.colors.blue);
+      const startsIn = nxtP.s - currMins;
+      const tStr = startsIn < 60 ? `${startsIn} min` : `${Math.floor(startsIn / 60)}h ${startsIn % 60}m`;
+      const title = isBrk ? (nxtP.c === 'LUNCH' ? 'Lunch Break' : 'Library') : (nxtP.name || (m ? m.title : nxtP.c));
+
+      cNext.innerHTML = `
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-[10px] font-bold uppercase tracking-wider ${t.text} ${t.light} px-2 py-0.5 rounded-lg">${tStr}</span>
+          <span class="font-mono text-xs text-muted font-bold">${Utils.formatMins(nxtP.s)}</span>
+        </div>
+        <h4 class="font-bold text-primary text-base leading-tight mb-auto pb-3">${title}</h4>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-1.5 text-xs font-semibold text-muted bg-background px-2.5 py-1 rounded-lg border border-border">
+            <i class="fa-solid ${isBrk ? 'fa-mug-hot' : 'fa-door-open'} text-[11px]"></i> ${nxtP.r || 'Campus'}
+          </div>
+          ${!isBrk ? `<div class="flex items-center gap-1.5 text-xs font-semibold text-muted bg-background px-2.5 py-1 rounded-lg border border-border"><i class="fa-solid fa-user-chalkboard text-[11px]"></i> ${nxtP.teacher || (m ? m.teacher : '')}</div>` : ''}
+        </div>`;
+    } else {
+      cNext.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center p-4 text-muted"><p class="text-xs font-medium">Done for the day ✨</p></div>`;
+    }
+
+    cLater.innerHTML = latP.length > 0 ? latP.map(p => {
+      const isBrk = p.c === 'LUNCH' || p.c === 'LIBRARY';
+      const cObj = DATA.courses[p.c];
+      return `
+        <div class="flex items-center gap-3 p-2.5 hover:bg-surface-hover transition-colors rounded-xl">
+          <div class="w-1 h-7 rounded-full ${isBrk || !cObj ? 'bg-border' : TOKENS.colors[cObj.token]?.bg}"></div>
+          <div class="flex-1 min-w-0">
+            <p class="text-xs font-bold text-primary truncate">${isBrk ? (p.c === 'LUNCH' ? 'Lunch Break' : 'Library') : (p.name || cObj?.title)}</p>
+            <div class="flex items-center gap-2 text-[10px] font-mono text-muted mt-0.5">
+              <span>${Utils.formatMins(p.s)}</span> • <span>${p.r || 'Campus'}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('') : `<div class="p-4 text-center text-xs text-muted">Nothing else scheduled.</div>`;
+  }
+};
+
+const Schedule = {
+  render: () => {
+    const dates = Utils.getWeekDates();
+    const scheduleTimeline = Utils.dom('schedule-timeline');
+    const scheduleLegend = Utils.dom('schedule-legend');
+
+    if (scheduleLegend && scheduleLegend.innerHTML === '') {
+      let lHtml = '';
+      const seenTokens = new Set();
+      Object.values(DATA.courses).forEach(c => {
+        if (!seenTokens.has(c.token)) {
+          seenTokens.add(c.token);
+          const t = TOKENS.colors[c.token];
+          lHtml += `<div class="flex items-center gap-1.5 bg-surface px-2 py-1 rounded-lg border border-border shadow-subtle"><div class="w-2 h-2 rounded-full ${t.bg}"></div><span class="text-muted tracking-wide truncate max-w-[140px] text-xs">${c.title.replace(' Lab', '')}</span></div>`;
+        }
+      });
+      scheduleLegend.innerHTML = lHtml;
+    }
+
+    if (!scheduleTimeline) return;
+    const fragT = Utils.createFrag();
+
+    [3, 4, 5, 6, 0].forEach(d => {
+      const dStr = dates[d];
+      const isTdy = new Date().getDay() === d;
+      const [yyyy, mm, dd] = dStr.split('-');
+      const ex = DATA.exceptions[dStr];
+      const isHoliday = ex?.type === 'holiday';
+      const isExam = ex?.type === 'exam';
+
+      const dayWrapper = document.createElement('div');
+      dayWrapper.className = 'relative pl-6 sm:pl-8';
+      let html = `
+        <div class="tl-connector ${isTdy ? 'bg-brand/30' : ''}"></div>
+        <header class="flex items-center gap-3 mb-3">
+          <div class="tl-marker ${isTdy ? 'bg-brand border-brand/20' : 'bg-border border-background'}"><div class="w-2 h-2 rounded-full bg-background"></div></div>
+          <h3 class="font-display font-bold text-lg ${isTdy ? 'text-brand' : 'text-primary'}">${DATA.days[d]} <span class="text-xs font-mono font-normal text-muted ml-1.5">${dd}/${mm}/${yyyy}</span></h3>
+        </header>
+        <div class="space-y-2.5 mb-6">`;
+
+      if (isHoliday) {
+        html += `
+          <div class="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-amber-600 dark:text-amber-400 font-bold text-xs shadow-subtle">
+            <div class="flex items-center gap-2.5">
+              <i class="fa-solid fa-umbrella-beach text-sm"></i>
+              <span>${ex.title}</span>
+            </div>
+            <span class="text-[10px] uppercase font-mono bg-amber-500/20 px-2 py-0.5 rounded-lg">No Classes</span>
+          </div>`;
+      } else if (isExam) {
+        const subAbbr = ex.courseCode ? Utils.getCourseAbbr(ex.courseCode) : '';
+        html += `
+          <div class="p-3.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-between text-indigo-600 dark:text-indigo-400 font-bold text-xs shadow-subtle mb-2">
+            <div class="flex items-center gap-2.5">
+              <i class="fa-solid fa-file-signature text-sm"></i>
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="bg-indigo-500 text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-lg">${ex.examCategory || 'Exam'}</span>
+                  <span>${subAbbr}</span>
+                </div>
+                <p class="text-[10px] font-mono text-muted mt-0.5">${ex.time || '10:00 AM - 11:30 AM'}</p>
+              </div>
+            </div>
+            <span class="text-[10px] uppercase font-mono bg-indigo-500/20 px-2 py-0.5 rounded-lg">Test</span>
+          </div>`;
+      }
+
+      if (!isHoliday) {
+        const daySlots = DATA.timetable[d] || [];
+        daySlots.forEach(p => {
+          const pkey = `${p.c}-${dStr}-${p.s}`;
+          if (p.c === 'LUNCH' || p.c === 'LIBRARY') {
+            html += `<div class="bg-background border border-border border-dashed rounded-xl p-2.5 flex justify-center text-[10px] font-mono font-bold text-muted uppercase tracking-wider">${Utils.formatMins(p.s)} - ${Utils.formatMins(p.e)} • ${p.c === 'LUNCH' ? 'LUNCH BREAK' : 'LIBRARY'}</div>`;
+          } else {
+            const m = DATA.courses[p.c];
+            if (m) {
+              const t = TOKENS.colors[m.token] || TOKENS.colors.blue;
+              html += `
+                <article class="card rounded-2xl card-hoverable p-3.5 flex flex-col gap-2.5 relative overflow-hidden group shadow-subtle" data-pkey="${pkey}">
+                  <div class="absolute left-0 top-0 bottom-0 w-1 ${t.bg}"></div>
+                  <div class="pl-1.5">
+                    <h4 class="font-bold text-xs text-primary mb-1">${p.name || m.title}</h4>
+                    <p class="text-[11px] font-mono text-muted flex items-center gap-2 flex-wrap">
+                      <span>${Utils.formatMins(p.s)} - ${Utils.formatMins(p.e)}</span>
+                      <span>•</span>
+                      <span>${p.r}</span>
+                      <span>•</span>
+                      <span>${p.teacher || m.teacher}</span>
+                    </p>
+                  </div>
+                  <footer class="att-mount border-t border-border pt-2.5 pl-1.5 flex justify-between items-center" data-pkey="${pkey}"></footer>
+                </article>`;
+            }
+          }
+        });
+      }
+      html += `</div>`;
+      dayWrapper.innerHTML = html;
+      fragT.appendChild(dayWrapper);
+    });
+
+    scheduleTimeline.innerHTML = '';
+    scheduleTimeline.appendChild(fragT);
+
+    const slots = [570, 620, 670, 720, 815, 860, 905, 950];
+    let gHtml = `<thead><tr><th scope="col">Date</th><th scope="col">9:30</th><th scope="col">10:20</th><th scope="col">11:10</th><th scope="col">12:00</th><th scope="col" class="bg-background">12:50</th><th scope="col">1:35</th><th scope="col">2:20</th><th scope="col">3:05</th><th scope="col">3:50</th></tr></thead><tbody>`;
+    gHtml += `<tr><th scope="row">MON / TUE</th><td colspan="4" class="text-center text-muted italic text-[11px]">No Classes</td><td class="bg-background text-center font-bold text-muted text-[10px] p-2">LUNCH</td><td colspan="4" class="text-center text-muted italic text-[11px]">No Classes</td></tr>`;
+
+    [3, 4, 5, 6, 0].forEach(d => {
+      const dStr = dates[d];
+      const [yyyy, mm, dd] = dStr.split('-');
+      gHtml += `<tr><th scope="row" class="text-left font-normal"><b>${DATA.days[d].slice(0, 3).toUpperCase()}</b><br><span class="text-[10px] font-mono text-muted">${dd}/${mm}</span></th>`;
+
+      if (DATA.exceptions[dStr]?.type === 'holiday') {
+        gHtml += `<td colspan="4" class="text-center text-amber-500 italic bg-amber-500/5 font-bold text-xs">${DATA.exceptions[dStr].title}</td>`;
+        gHtml += `<td class="bg-background text-center font-bold text-muted text-[10px] p-2">LUNCH</td>`;
+        gHtml += `<td colspan="4" class="text-center text-amber-500 italic bg-amber-500/5 font-bold text-xs">${DATA.exceptions[dStr].title}</td>`;
+      } else {
+        let i = 0;
+        const daySlotsGrid = DATA.timetable[d] || [];
+        
+        while (i < 4) {
+          const p = daySlotsGrid.find(x => x.s === slots[i]);
+          if (p && p.c !== 'LUNCH') {
+            if (p.c === 'LIBRARY') {
+              gHtml += `<td class="text-center text-muted bg-background text-[11px] font-bold">LIB</td>`;
+              i++;
+            } else {
+              const m = DATA.courses[p.c];
+              if (m) {
+                const span = (p.e - p.s) >= 90 ? 2 : 1;
+                const t = TOKENS.colors[m.token] || TOKENS.colors.blue;
+                const profName = p.teacher || m.teacher;
+                gHtml += `
+                  <td colspan="${span}" class="border-l-2 ${t.border} ${t.light} relative p-2 align-top group hover:bg-brand/10 transition-colors">
+                    <span class="font-bold text-primary block leading-tight mb-1 text-xs">${Utils.getCourseAbbr(p.c)}</span>
+                    <div class="flex flex-col gap-0.5 text-[10px] text-muted font-medium">
+                       <span class="text-primary/80 truncate">${profName}</span>
+                       <div class="flex justify-between items-center mt-1">
+                         <span class="bg-background border border-border px-1 py-0.5 rounded font-mono text-[10px] shadow-sm">${p.r}</span>
+                         <div class="att-mount" data-pkey="${p.c}-${dStr}-${p.s}"></div>
+                       </div>
+                    </div>
+                  </td>`;
+                i += span;
+              } else { gHtml += `<td class="text-center text-border">-</td>`; i++; }
+            }
+          } else { gHtml += `<td class="text-center text-border">-</td>`; i++; }
+        }
+
+        gHtml += `<td class="bg-background text-center font-bold text-muted text-[10px] p-2">LUNCH</td>`;
+
+        i = 4;
+        while (i < slots.length) {
+          const p = daySlotsGrid.find(x => x.s === slots[i]);
+          if (p && p.c !== 'LUNCH') {
+            if (p.c === 'LIBRARY') {
+              gHtml += `<td class="text-center text-muted bg-background text-[11px] font-bold">LIB</td>`;
+              i++;
+            } else {
+              const m = DATA.courses[p.c];
+              if (m) {
+                const span = (p.e - p.s) >= 90 ? 2 : 1;
+                const t = TOKENS.colors[m.token] || TOKENS.colors.blue;
+                const profName = p.teacher || m.teacher;
+                gHtml += `
+                  <td colspan="${span}" class="border-l-2 ${t.border} ${t.light} relative p-2 align-top group hover:bg-brand/10 transition-colors">
+                    <span class="font-bold text-primary block leading-tight mb-1 text-xs">${Utils.getCourseAbbr(p.c)}</span>
+                    <div class="flex flex-col gap-0.5 text-[10px] text-muted font-medium">
+                       <span class="text-primary/80 truncate">${profName}</span>
+                       <div class="flex justify-between items-center mt-1">
+                         <span class="bg-background border border-border px-1 py-0.5 rounded font-mono text-[10px] shadow-sm">${p.r}</span>
+                         <div class="att-mount" data-pkey="${p.c}-${dStr}-${p.s}"></div>
+                       </div>
+                    </div>
+                  </td>`;
+                i += span;
+              } else { gHtml += `<td class="text-center text-border">-</td>`; i++; }
+            }
+          } else { gHtml += `<td class="text-center text-border">-</td>`; i++; }
+        }
+      }
+      gHtml += `</tr>`;
+    });
+    const dynamicGrid = Utils.dom('dynamic-grid');
+    if (dynamicGrid) dynamicGrid.innerHTML = gHtml + `</tbody>`;
+  }
+};
+
+const Hostel = {
+  timingMode: 'weekday',
+  selectedDay: new Date().getDay() || 1,
+
+  renderMenu: () => {
+    const daySelector = Utils.dom('hostel-day-selector');
+    const menuCont = Utils.dom('hostel-menu-active-day');
+    if (!daySelector || !menuCont) return;
+
+    const dayOrder = [1, 2, 3, 4, 5, 6, 0];
+    daySelector.innerHTML = dayOrder.map(d => {
+      const isSelected = Hostel.selectedDay === d;
+      return `
+        <button type="button" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+          isSelected 
+            ? 'bg-brand text-white shadow-sm' 
+            : 'text-muted hover:text-primary hover:bg-surface-hover'
+        }" onclick="Hostel.selectDay(${d})">
+          ${DATA.days[d].slice(0, 3)}
+        </button>
+      `;
+    }).join('');
+
+    const menu = DATA.hostel.menu[Hostel.selectedDay];
+    if (!menu) return;
+
+    const rows = [
+      { label: 'Breakfast', key: 'breakfast', icon: 'fa-mug-saucer' },
+      { label: 'Lunch', key: 'lunch', icon: 'fa-bowl-rice' },
+      { label: 'Evening Snacks', key: 'snacks', icon: 'fa-cookie-bite' },
+      { label: 'Dinner', key: 'dinner', icon: 'fa-utensils' }
+    ];
+
+    menuCont.innerHTML = rows.map(r => `
+      <div class="bg-background border border-border p-3.5 rounded-xl flex flex-col justify-between">
+        <div class="flex items-center gap-2 mb-2">
+          <i class="fa-solid ${r.icon} text-brand text-xs"></i>
+          <span class="text-[11px] font-mono font-bold uppercase tracking-wider text-muted">${r.label}</span>
+        </div>
+        ${Utils.renderMealPills(menu[r.key])}
+        ${r.key === 'dinner' && menu.dessert ? `
+          <div class="mt-3 pt-2.5 border-t border-border flex items-center justify-between">
+            <span class="text-[10px] font-mono uppercase text-amber-500 font-bold">Dessert</span>
+            <span class="px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-400/15 text-amber-600 border border-amber-400/30">${menu.dessert}</span>
+          </div>` : ''}
+      </div>
+    `).join('');
+  },
+
+  selectDay: (dayNum) => {
+    Hostel.selectedDay = dayNum;
+    Hostel.renderMenu();
+  },
+
+  renderTimings: () => {
+    const list = Utils.dom('hostel-timings');
+    if (!list) return;
+    const timings = DATA.hostel.timings[Hostel.timingMode] || [];
+    list.innerHTML = timings.map(t => `
+      <li class="flex justify-between items-center border-b border-border/60 pb-2 last:border-0 last:pb-0">
+        <span class="text-primary font-semibold text-xs">${t.name}</span>
+        <span class="font-mono text-xs text-muted">${t.time}</span>
+      </li>
+    `).join('');
+  },
+
+  setTimingMode: (mode) => {
+    Hostel.timingMode = mode;
+    const btnRegular = Utils.dom('timing-btn-regular');
+    const btnWeekend = Utils.dom('timing-btn-weekend');
+    if (btnRegular && btnWeekend) {
+      if (mode === 'weekend') {
+        btnWeekend.className = "px-2.5 py-1 rounded-xl bg-primary text-background shadow-sm transition-all focus-visible";
+        btnRegular.className = "px-2.5 py-1 rounded-xl text-muted hover:text-primary transition-all focus-visible";
+      } else {
+        btnRegular.className = "px-2.5 py-1 rounded-xl bg-primary text-background shadow-sm transition-all focus-visible";
+        btnWeekend.className = "px-2.5 py-1 rounded-xl text-muted hover:text-primary transition-all focus-visible";
+      }
+    }
+    Hostel.renderTimings();
+  },
+
+  init: () => {
+    const btnRegular = Utils.dom('timing-btn-regular');
+    const btnWeekend = Utils.dom('timing-btn-weekend');
+    if (btnRegular) btnRegular.onclick = () => Hostel.setTimingMode('weekday');
+    if (btnWeekend) btnWeekend.onclick = () => Hostel.setTimingMode('weekend');
+  },
+
+  render: () => {
+    Hostel.renderMenu();
+    Hostel.renderTimings();
+  }
+};
+
+const Search = {
+  init: () => {
+    const btnSearch = Utils.dom('btn-search');
+    const palette = Utils.dom('cmd-palette');
+    const input = Utils.dom('cmd-input');
+    const results = Utils.dom('cmd-results');
+    const scheduleSearch = Utils.dom('search-schedule');
+
+    if (btnSearch && palette) {
+      btnSearch.onclick = () => {
+        Search.renderResults('');
+        if (input) input.value = '';
+        if (typeof palette.showModal === 'function') palette.showModal();
+        if (input) input.focus();
+      };
+    }
+    if (palette) {
+      palette.addEventListener('click', e => { if (e.target === palette) palette.close(); });
+    }
+    if (input) {
+      input.addEventListener('input', () => Search.renderResults(input.value));
+    }
+    if (results) {
+      results.addEventListener('click', e => {
+        const item = e.target.closest('[data-course]');
+        if (item) {
+          const code = item.getAttribute('data-course');
+          if (palette) palette.close();
+          Calendar.open(code);
+        }
+      });
+    }
+    if (scheduleSearch) {
+      scheduleSearch.addEventListener('input', () => Search.filterSchedule(scheduleSearch.value));
+    }
+
+    document.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (btnSearch) btnSearch.click();
+      }
+    });
+  },
+  renderResults: (query) => {
+    const results = Utils.dom('cmd-results');
+    if (!results) return;
+    const q = query.trim().toLowerCase();
+    const matches = Object.entries(DATA.courses).filter(([code, c]) => {
+      if (!q) return true;
+      return code.toLowerCase().includes(q) || (c.title || '').toLowerCase().includes(q) || (c.teacher || '').toLowerCase().includes(q);
+    }).slice(0, 20);
+
+    if (!matches.length) {
+      results.innerHTML = `<li class="p-3 text-center text-xs text-muted">No matches found.</li>`;
+      return;
+    }
+
+    results.innerHTML = matches.map(([code, c]) => {
+      const t = TOKENS.colors[c.token] || TOKENS.colors.blue;
+      return `
+        <li data-course="${code}" class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-surface-hover cursor-pointer transition-colors">
+          <div class="w-2 h-2 rounded-full ${t.bg} shrink-0"></div>
+          <div class="min-w-0 flex-1">
+            <p class="text-xs font-bold text-primary truncate">${c.title}</p>
+            <p class="text-[10px] font-mono text-muted truncate">${code}${c.teacher ? ' · ' + c.teacher : ''}</p>
+          </div>
+          <i class="fa-solid fa-chevron-right text-muted text-[10px]"></i>
+        </li>`;
+    }).join('');
+  },
+  filterSchedule: (query) => {
+    const q = query.trim().toLowerCase();
+    document.querySelectorAll('#schedule-timeline .card[data-pkey]').forEach(card => {
+      const match = !q || card.textContent.toLowerCase().includes(q);
+      card.classList.toggle('hidden', !match);
+    });
+  }
+};
+
+const SwipeHandler = {
+  touchstartX: 0,
+  touchstartY: 0,
+  touchendX: 0,
+  touchendY: 0,
+  tabs: ['today', 'schedule', 'tasks', 'analytics', 'hostel'],
+  init: () => {
+    const mainContent = document.getElementById('main-content');
+    if(!mainContent) return;
+
+    mainContent.addEventListener('touchstart', e => {
+      SwipeHandler.touchstartX = e.changedTouches[0].screenX;
+      SwipeHandler.touchstartY = e.changedTouches[0].screenY;
+    }, {passive: true});
+
+    mainContent.addEventListener('touchend', e => {
+      if (e.target.closest('#schedule-grid') || e.target.closest('.table-container')) return;
+
+      SwipeHandler.touchendX = e.changedTouches[0].screenX;
+      SwipeHandler.touchendY = e.changedTouches[0].screenY;
+      SwipeHandler.handleSwipe();
+    }, {passive: true});
+  },
+  handleSwipe: () => {
+    const threshold = 80;
+    const deltaX = Math.abs(SwipeHandler.touchendX - SwipeHandler.touchstartX);
+    const deltaY = Math.abs(SwipeHandler.touchendY - SwipeHandler.touchstartY);
+
+    if (deltaY > deltaX) return;
+
+    let currentIndex = SwipeHandler.tabs.indexOf(View.currentTab);
+    if(currentIndex === -1) currentIndex = 0;
+
+    if (SwipeHandler.touchendX < SwipeHandler.touchstartX - threshold) {
+      if (currentIndex < SwipeHandler.tabs.length - 1) {
+        View.switchTab(SwipeHandler.tabs[currentIndex + 1]);
+      }
+    }
+    
+    if (SwipeHandler.touchendX > SwipeHandler.touchstartX + threshold) {
+      if (currentIndex > 0) {
+        View.switchTab(SwipeHandler.tabs[currentIndex - 1]);
+      }
+    }
+  }
+};
+
+const View = {
+  currentTab: 'today',
+  switchTab: (tabId) => {
+    View.currentTab = tabId;
+    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+    const tabEl = Utils.dom(`tab-${tabId}`);
+    if (tabEl) tabEl.classList.add('active');
+
+    document.querySelectorAll('.nav-btn').forEach(el => {
+      el.classList.remove('nav-active');
+      el.setAttribute('aria-selected', 'false');
+    });
+    const btn = document.querySelector(`.nav-btn[data-target="tab-${tabId}"]`);
+    if (btn) {
+      btn.classList.add('nav-active');
+      btn.setAttribute('aria-selected', 'true');
+    }
+  },
+  switchSchedule: (v) => {
+    const tl = Utils.dom('schedule-timeline');
+    const gr = Utils.dom('schedule-grid');
+    const bT = Utils.dom('toggle-timeline');
+    const bG = Utils.dom('toggle-grid');
+    if (!tl || !gr || !bT || !bG) return;
+
+    if (v === 'grid') {
+      tl.classList.add('hidden');
+      gr.classList.remove('hidden');
+      bG.className = "px-3 py-1.5 rounded-xl bg-primary text-background shadow-sm transition-all";
+      bT.className = "px-3 py-1.5 rounded-xl text-muted hover:text-primary transition-all";
+    } else {
+      gr.classList.add('hidden');
+      tl.classList.remove('hidden');
+      bT.className = "px-3 py-1.5 rounded-xl bg-primary text-background shadow-sm transition-all";
+      bG.className = "px-3 py-1.5 rounded-xl text-muted hover:text-primary transition-all";
+    }
+  },
+  init: () => {
+    const toggleTimeline = Utils.dom('toggle-timeline');
+    const toggleGrid = Utils.dom('toggle-grid');
+    if (toggleTimeline) toggleTimeline.onclick = () => View.switchSchedule('timeline');
+    if (toggleGrid) toggleGrid.onclick = () => View.switchSchedule('grid');
+    SwipeHandler.init();
+  }
+};
+
+const Theme = {
+  toggle: () => {
+    document.documentElement.classList.toggle('dark');
+    document.documentElement.classList.toggle('light');
+    localStorage.setItem(CONFIG.themeKey, document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', document.documentElement.classList.contains('dark') ? '#09090b' : '#fcfcfd');
+  },
+  init: () => {
+    const btnTheme = Utils.dom('btn-theme');
+    if (btnTheme) {
+      if (localStorage.getItem(CONFIG.themeKey) === 'light') {
+        document.documentElement.classList.replace('dark', 'light');
+      }
+      btnTheme.onclick = Theme.toggle;
+    }
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  Utils.cacheDOM();
+  State.seed();
+  Engine.Semester.update();
+  Schedule.render();
+  AttendanceCalc.init();
+  AttendanceCalc.updateHub();
+  AttendanceCalc.renderBtns();
+  Dropdown.init();
+  TasksManager.init();
+  TasksManager.render();
+  Hostel.init();
+  Today.render();
+  Hostel.render();
+  View.init();
+  Theme.init();
+  Calendar.init();
+  DatePicker.init();
+  HolidayManager.init();
+  Search.init();
+  Notifications.init();
+  Sync.init();
+
+  document.body.addEventListener('click', e => {
+    const attBtn = e.target.closest('.att-action');
+    if (attBtn) {
+      e.stopPropagation();
+      const pKeyAttr = attBtn.getAttribute('data-pkey');
+      const valAttr = attBtn.getAttribute('data-val');
+      if (pKeyAttr) State.mark(pKeyAttr, valAttr === 'null' ? null : valAttr);
+      return;
+    }
+    const navBtn = e.target.closest('.nav-btn');
+    if (navBtn) {
+      const targetAttr = navBtn.getAttribute('data-target');
+      if (targetAttr) View.switchTab(targetAttr.replace('tab-', ''));
+      return;
+    }
+    const calTrig = e.target.closest('.cal-trigger');
+    if (calTrig) {
+      e.preventDefault();
+      const courseAttr = calTrig.getAttribute('data-course');
+      if (courseAttr) Calendar.open(courseAttr);
+      return;
+    }
+  });
+
+  setInterval(() => {
+    requestAnimationFrame(() => {
+      Today.render();
+      Hostel.render();
+      AttendanceCalc.renderBtns();
+      Notifications.checkReminders();
+    });
+  }, CONFIG.refreshRateMs);
+});
+</script>
+</body>
+</html>
