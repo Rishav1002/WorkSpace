@@ -207,22 +207,22 @@
       </div>
     </div>
     <div class="flex items-center gap-1.5">
-      <button type="button" id="btn-search" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible" aria-label="Search">
-        <i class="fa-solid fa-magnifying-glass text-sm"></i>
+      <button type="button" id="btn-search" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible touch-manipulation" aria-label="Search">
+        <i class="fa-solid fa-magnifying-glass text-sm pointer-events-none"></i>
       </button>
       <div class="relative">
-        <button type="button" id="btn-notif" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all relative focus-visible" aria-label="Notifications Center">
-          <i class="fa-solid fa-bell text-sm"></i>
+        <button type="button" id="btn-notif" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all relative focus-visible touch-manipulation" aria-label="Notifications Center">
+          <i class="fa-solid fa-bell text-sm pointer-events-none"></i>
           <span id="notif-badge" class="absolute top-2 right-2 w-2 h-2 rounded-full bg-rose-500 hidden animate-pulse"></span>
         </button>
       </div>
       <div class="w-px h-4 bg-border mx-1"></div>
-      <button type="button" id="btn-sync-settings" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible" aria-label="Sync Settings">
-        <i class="fa-solid fa-cloud-arrow-up text-sm" id="sync-status-icon"></i>
+      <button type="button" id="btn-sync-settings" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible touch-manipulation cursor-pointer relative z-50" aria-label="Sync Settings">
+        <i class="fa-solid fa-cloud-arrow-up text-sm pointer-events-none" id="sync-status-icon"></i>
       </button>
-      <button type="button" id="btn-theme" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible" aria-label="Toggle Theme">
-        <i class="fa-solid fa-moon dark:hidden"></i>
-        <i class="fa-solid fa-sun hidden dark:block text-amber-400"></i>
+      <button type="button" id="btn-theme" class="w-9 h-9 rounded-xl hover:bg-surface-hover flex items-center justify-center text-muted hover:text-primary transition-all focus-visible touch-manipulation" aria-label="Toggle Theme">
+        <i class="fa-solid fa-moon dark:hidden pointer-events-none"></i>
+        <i class="fa-solid fa-sun hidden dark:block text-amber-400 pointer-events-none"></i>
       </button>
     </div>
   </div>
@@ -526,6 +526,35 @@
     </button>
   </div>
 </nav>
+
+<!-- MODAL: CLOUD SYNC SETTINGS -->
+<dialog id="modal-sync" aria-modal="true" class="bg-transparent p-4 w-full max-w-md m-auto border-none shadow-none z-[110]">
+  <div class="bg-surface border border-border rounded-2xl shadow-float-dark w-full flex flex-col mx-auto overflow-hidden">
+    <header class="p-4 border-b border-border flex justify-between items-center bg-surface">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-brand/10 text-brand flex items-center justify-center text-sm"><i class="fa-solid fa-cloud"></i></div>
+        <h3 class="font-display font-bold text-base text-primary">Cloud Sync Settings</h3>
+      </div>
+      <button type="button" id="btn-close-sync" class="w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center text-muted hover:text-rose-500 transition-colors focus-visible" aria-label="Close">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </header>
+    <form id="form-sync-config" class="p-4 space-y-3.5 bg-surface">
+      <div>
+        <label for="sync-server-url" class="block text-xs font-bold text-muted uppercase tracking-wider mb-1">Server URL</label>
+        <input type="url" id="sync-server-url" placeholder="https://your-app.onrender.com" required class="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary focus:outline-none focus:ring-1 focus:ring-brand font-mono">
+      </div>
+      <div>
+        <label for="sync-token" class="block text-xs font-bold text-muted uppercase tracking-wider mb-1">Sync Token</label>
+        <input type="text" id="sync-token" placeholder="Your shared secret key" required class="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary focus:outline-none focus:ring-1 focus:ring-brand font-mono">
+      </div>
+      <div class="pt-2 flex gap-2">
+        <button type="submit" class="flex-1 py-2.5 bg-brand text-white rounded-xl text-xs font-bold hover:opacity-90 active:scale-[0.99] transition-all">Save & Sync Now</button>
+        <button type="button" id="btn-sync-pull-now" class="px-3 py-2.5 bg-surface-hover border border-border text-primary rounded-xl text-xs font-bold hover:border-brand transition-all">Force Pull</button>
+      </div>
+    </form>
+  </div>
+</dialog>
 
 <!-- MODAL: NOTIFICATION CENTER -->
 <dialog id="modal-notif-center" aria-modal="true" class="bg-transparent p-4 w-full max-w-md m-auto border-none shadow-none">
@@ -1015,7 +1044,8 @@ const Utils = {
       'modal-notif-center', 'btn-close-notif-center', 'btn-clear-notifs', 'notif-center-list',
       'holiday-form-mode-title', 'btn-cancel-edit-holiday', 'btn-submit-holiday', 'btn-task-auto-date', 'task-modal-title',
       'hostel-day-selector', 'hostel-menu-active-day',
-      'modal-datepicker', 'btn-dp-prev', 'dp-month', 'btn-dp-next', 'dp-grid', 'btn-dp-close', 'label-holiday-date'
+      'modal-datepicker', 'btn-dp-prev', 'dp-month', 'btn-dp-next', 'dp-grid', 'btn-dp-close', 'label-holiday-date',
+      'modal-sync', 'btn-sync-settings', 'btn-close-sync', 'form-sync-config', 'sync-server-url', 'sync-token', 'btn-sync-pull-now'
     ].forEach(id => {
       const el = document.getElementById(id);
       if (el) DOM[id] = el;
@@ -1110,7 +1140,6 @@ const Sync = {
   },
   _pushTimer: null,
   _setIcon: (state) => {
-    // state: 'idle' | 'pending' | 'syncing' | 'error' | 'off'
     const icon = document.getElementById('sync-status-icon');
     if (!icon) return;
     const map = {
@@ -1120,7 +1149,7 @@ const Sync = {
       syncing: 'fa-arrows-rotate fa-spin',
       error: 'fa-triangle-exclamation'
     };
-    icon.className = `fa-solid ${map[state] || map.idle} text-sm`;
+    icon.className = `fa-solid ${map[state] || map.idle} text-sm pointer-events-none`;
     icon.parentElement.classList.toggle('text-rose-500', state === 'error');
     icon.parentElement.classList.toggle('text-emerald-500', state === 'idle');
   },
@@ -1162,7 +1191,7 @@ const Sync = {
         Sync._setIcon('error');
       }
     } catch (e) {
-      Sync._setIcon('error'); // offline/unreachable — local data is untouched, will retry later
+      Sync._setIcon('error');
     }
   },
   pull: async () => {
@@ -1181,7 +1210,7 @@ const Sync = {
       }
       Sync._setIcon('idle');
     } catch (e) {
-      Sync._setIcon('error'); // offline — keep working with local copy
+      Sync._setIcon('error');
     }
   },
   applyRemote: (remote) => {
@@ -1201,18 +1230,55 @@ const Sync = {
     if (typeof TasksManager !== 'undefined') TasksManager.render();
     if (typeof AttendanceCalc !== 'undefined') { AttendanceCalc.updateHub(); AttendanceCalc.renderBtns(); }
   },
-  promptSetup: () => {
-    const existing = Sync.config || { url: '', token: '' };
-    const url = window.prompt('Sync server URL (e.g. https://your-app.onrender.com)', existing.url || '');
-    if (url === null) return;
-    const token = window.prompt('Sync token (the shared secret set on your server)', existing.token || '');
-    if (token === null) return;
-    Sync.setConfig(url.trim(), token.trim());
-    Sync.pull().then(() => Sync.push());
-  },
   init: () => {
     const btn = document.getElementById('btn-sync-settings');
-    if (btn) btn.addEventListener('click', Sync.promptSetup);
+    const modal = document.getElementById('modal-sync');
+    const btnClose = document.getElementById('btn-close-sync');
+    const form = document.getElementById('form-sync-config');
+    const btnPullNow = document.getElementById('btn-sync-pull-now');
+    const inpUrl = document.getElementById('sync-server-url');
+    const inpTok = document.getElementById('sync-token');
+
+    const openModal = (e) => {
+      if (e) e.preventDefault();
+      const existing = Sync.config || { url: '', token: '' };
+      if (inpUrl) inpUrl.value = existing.url || '';
+      if (inpTok) inpTok.value = existing.token || '';
+      if (modal && typeof modal.showModal === 'function') modal.showModal();
+    };
+
+    if (btn) {
+      btn.addEventListener('click', openModal);
+      btn.addEventListener('touchend', (e) => {
+        e.stopPropagation();
+        openModal(e);
+      }, { passive: false });
+    }
+
+    if (btnClose && modal) btnClose.onclick = () => modal.close();
+    if (modal) modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+
+    if (form) {
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const url = inpUrl.value.trim();
+        const token = inpTok.value.trim();
+        Sync.setConfig(url, token);
+        if (modal) modal.close();
+        Sync.pull().then(() => Sync.push());
+      };
+    }
+
+    if (btnPullNow) {
+      btnPullNow.onclick = () => {
+        const url = inpUrl.value.trim();
+        const token = inpTok.value.trim();
+        if (url) Sync.setConfig(url, token);
+        if (modal) modal.close();
+        Sync.pull();
+      };
+    }
+
     if (Sync.config && Sync.config.url) Sync.pull();
     else Sync._setIcon('off');
   }
