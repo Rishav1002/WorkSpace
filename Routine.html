@@ -552,6 +552,9 @@
         <button type="submit" class="flex-1 py-2.5 bg-brand text-white rounded-xl text-xs font-bold hover:opacity-90 active:scale-[0.99] transition-all">Save & Sync Now</button>
         <button type="button" id="btn-sync-pull-now" class="px-3 py-2.5 bg-surface-hover border border-border text-primary rounded-xl text-xs font-bold hover:border-brand transition-all">Force Pull</button>
       </div>
+      <button type="button" id="btn-sync-backup" class="w-full py-2.5 bg-surface-hover border border-border text-muted rounded-xl text-xs font-bold hover:border-brand hover:text-primary transition-all flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-download text-[11px]"></i> Download Backup (JSON)
+      </button>
     </form>
   </div>
 </dialog>
@@ -1045,7 +1048,7 @@ const Utils = {
       'holiday-form-mode-title', 'btn-cancel-edit-holiday', 'btn-submit-holiday', 'btn-task-auto-date', 'task-modal-title',
       'hostel-day-selector', 'hostel-menu-active-day',
       'modal-datepicker', 'btn-dp-prev', 'dp-month', 'btn-dp-next', 'dp-grid', 'btn-dp-close', 'label-holiday-date',
-      'modal-sync', 'btn-sync-settings', 'btn-close-sync', 'form-sync-config', 'sync-server-url', 'sync-token', 'btn-sync-pull-now'
+      'modal-sync', 'btn-sync-settings', 'btn-close-sync', 'form-sync-config', 'sync-server-url', 'sync-token', 'btn-sync-pull-now', 'btn-sync-backup'
     ].forEach(id => {
       const el = document.getElementById(id);
       if (el) DOM[id] = el;
@@ -1142,16 +1145,19 @@ const Sync = {
   _setIcon: (state) => {
     const icon = document.getElementById('sync-status-icon');
     if (!icon) return;
-    const map = {
-      off: 'fa-cloud-arrow-up',
-      idle: 'fa-cloud-arrow-up',
-      pending: 'fa-cloud-arrow-up',
-      syncing: 'fa-arrows-rotate fa-spin',
-      error: 'fa-triangle-exclamation'
-    };
-    icon.className = `fa-solid ${map[state] || map.idle} text-sm pointer-events-none`;
-    icon.parentElement.classList.toggle('text-rose-500', state === 'error');
-    icon.parentElement.classList.toggle('text-emerald-500', state === 'idle');
+    const btn = icon.parentElement;
+    btn.classList.remove('text-rose-500', 'text-emerald-500', 'text-muted');
+    if (state === 'syncing') {
+      icon.className = 'fa-solid fa-arrows-rotate fa-spin text-sm pointer-events-none';
+      btn.classList.add('text-emerald-500');
+    } else if (state === 'error') {
+      icon.className = 'fa-solid fa-triangle-exclamation text-sm pointer-events-none';
+      btn.classList.add('text-rose-500');
+    } else {
+      // idle, pending, off — all render as the grey cloud
+      icon.className = 'fa-solid fa-cloud-arrow-up text-sm pointer-events-none';
+      btn.classList.add('text-muted');
+    }
   },
   buildPayload: () => ({
     att: State._att,
@@ -1213,6 +1219,26 @@ const Sync = {
       Sync._setIcon('error');
     }
   },
+  downloadBackup: () => {
+    const payload = Sync.buildPayload();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mca-workspace-backup-${Utils.dateToIso(new Date())}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+  _pollTimer: null,
+  startPolling: () => {
+    if (Sync._pollTimer) return;
+    Sync._pollTimer = setInterval(() => {
+      if (!document.hidden) Sync.pull();
+    }, 90000); // every 90s while the tab is open and visible
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) Sync.pull();
+    });
+  },
   applyRemote: (remote) => {
     State._att = remote.att || {};
     DATA.exceptions = remote.exceptions || {};
@@ -1236,6 +1262,7 @@ const Sync = {
     const btnClose = document.getElementById('btn-close-sync');
     const form = document.getElementById('form-sync-config');
     const btnPullNow = document.getElementById('btn-sync-pull-now');
+    const btnBackup = document.getElementById('btn-sync-backup');
     const inpUrl = document.getElementById('sync-server-url');
     const inpTok = document.getElementById('sync-token');
 
@@ -1279,8 +1306,11 @@ const Sync = {
       };
     }
 
+    if (btnBackup) btnBackup.onclick = Sync.downloadBackup;
+
     if (Sync.config && Sync.config.url) Sync.pull();
     else Sync._setIcon('off');
+    Sync.startPolling();
   }
 };
 
