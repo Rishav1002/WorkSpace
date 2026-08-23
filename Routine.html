@@ -8,7 +8,10 @@
 <meta name="description" content="Academic dashboard, timetable, tasks, exams, and attendance tracker.">
 
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="profile.jpg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Workspace">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 
 <script>
   'use strict';
@@ -250,24 +253,18 @@
       </article>
     </div>
 
-    <section aria-label="Progress Statistics" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <section aria-label="Progress Statistics" class="grid grid-cols-2 md:grid-cols-3 gap-4">
       <div class="card rounded-2xl card-hoverable p-4 flex flex-col justify-between transition-all shadow-subtle cursor-pointer" onclick="View.switchTab('analytics')">
         <span class="text-[11px] font-mono text-muted uppercase tracking-wider mb-2">Overall Att.</span>
         <span id="stat-att-global" class="font-display text-2xl font-bold text-primary">--%</span>
       </div>
       <div class="card rounded-2xl card-hoverable p-4 flex flex-col justify-between transition-all shadow-subtle cursor-pointer" onclick="View.switchTab('analytics')">
+        <span class="text-[11px] font-mono text-muted uppercase tracking-wider mb-2">Classes Attended</span>
+        <span id="stat-classes-attended" class="font-display text-2xl font-bold text-primary">--</span>
+      </div>
+      <div class="card rounded-2xl card-hoverable p-4 flex flex-col justify-between transition-all shadow-subtle cursor-pointer" onclick="View.switchTab('analytics')">
         <span class="text-[11px] font-mono text-muted uppercase tracking-wider mb-2">Safe to Miss</span>
         <span id="stat-safe-miss" class="font-display text-2xl font-bold text-emerald-500">--</span>
-      </div>
-      <div class="card rounded-2xl card-hoverable p-4 flex flex-col justify-between md:col-span-2 shadow-subtle">
-        <div class="flex justify-between items-center mb-3">
-          <span class="text-[11px] font-mono text-muted uppercase tracking-wider">Semester Progress</span>
-          <span id="stat-sem-week" class="text-[11px] font-mono text-primary font-bold">Week --</span>
-        </div>
-        <div class="w-full bg-background rounded-full h-1.5 border border-border overflow-hidden">
-          <div id="stat-sem-bar" class="bg-brand h-full transition-all duration-1000 w-0"></div>
-        </div>
-        <p id="stat-sem-days" class="text-[11px] text-muted mt-2 text-right font-mono">-- days remaining</p>
       </div>
     </section>
 
@@ -1030,7 +1027,7 @@ const Utils = {
     [
       'header-date', 'btn-notif', 'notif-badge', 'btn-theme', 'btn-search',
       'card-now', 'card-next', 'list-later', 'stat-classes-left',
-      'stat-att-global', 'stat-safe-miss', 'stat-sem-week', 'stat-sem-bar', 'stat-sem-days',
+      'stat-att-global', 'stat-safe-miss', 'stat-classes-attended',
       'search-schedule', 'toggle-timeline', 'toggle-grid', 'schedule-timeline', 'schedule-grid',
       'dynamic-grid', 'hub-attendance-calendar', 'hub-cal-month',
       'btn-hub-cal-prev', 'btn-hub-cal-next', 'stat-best-subject', 'stat-worst-subject', 'hub-courses',
@@ -1613,6 +1610,22 @@ const AttendanceCalc = {
 
   getCourseKey: (k) => k.split('-')[0],
 
+  // A single scheduled slot can be a genuine double-period class (e.g. a 100-min
+  // lab spanning two 50-min slots), marked with ONE present/absent tap. That one
+  // mark should still count as 2 periods toward totals/percentages, not 1.
+  getPeriodWeight: (pkey) => {
+    const parts = pkey.split('-');
+    const course = parts[0];
+    const dateStr = parts.slice(1, 4).join('-');
+    const startMin = parseInt(parts[4]);
+    if (isNaN(startMin)) return 1;
+    const dow = new Date(`${dateStr}T00:00:00`).getDay();
+    const daySlots = DATA.timetable[dow] || [];
+    const slot = daySlots.find(s => s.c === course && s.s === startMin);
+    if (!slot) return 1;
+    return Math.max(1, Math.round((slot.e - slot.s) / 50));
+  },
+
   computeStats: () => {
     let gP = 0, gT = 0;
     const cStats = {};
@@ -1623,11 +1636,12 @@ const AttendanceCalc = {
     Object.entries(State.att).forEach(([k, v]) => {
       const c = AttendanceCalc.getCourseKey(k);
       if (cStats[c] && (v === 'present' || v === 'absent')) {
-        cStats[c].t++;
-        gT++;
+        const w = AttendanceCalc.getPeriodWeight(k);
+        cStats[c].t += w;
+        gT += w;
         if (v === 'present') {
-          cStats[c].p++;
-          gP++;
+          cStats[c].p += w;
+          gP += w;
         }
       }
     });
@@ -1802,6 +1816,9 @@ const AttendanceCalc = {
     const stats = AttendanceCalc.computeStats();
     const statAttGlobal = Utils.dom('stat-att-global');
     if (statAttGlobal) statAttGlobal.innerText = stats.gT === 0 ? '--%' : `${stats.gPct}%`;
+
+    const statClassesAttended = Utils.dom('stat-classes-attended');
+    if (statClassesAttended) statClassesAttended.innerText = stats.gT === 0 ? '--' : `${stats.gP}/${stats.gT}`;
 
     const safeEl = Utils.dom('stat-safe-miss');
     if (safeEl) {
@@ -2664,6 +2681,35 @@ const Engine = {
 };
 
 const Today = {
+  // Semester-progress bar markup injected into the bottom of the Live Now
+  // card (id="card-now"), whose innerHTML is fully replaced on every render.
+  // 'light' = white-on-color styling for the colored "live class" state,
+  // 'neutral' = default styling for the plain-background states.
+  semBarHtml: (variant) => {
+    if (variant === 'light') {
+      return `
+        <div class="w-full mt-auto pt-4 border-t border-white/20 relative z-10">
+          <div class="flex justify-between items-center mb-1.5">
+            <span id="stat-sem-week" class="text-[10px] font-mono font-bold text-white/90 uppercase tracking-wider">Week --</span>
+            <span id="stat-sem-days" class="text-[10px] font-mono text-white/80">-- days left</span>
+          </div>
+          <div class="w-full bg-white/20 rounded-full h-1.5 overflow-hidden">
+            <div id="stat-sem-bar" class="bg-white h-full transition-all duration-1000 w-0"></div>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="w-full mt-auto pt-4 border-t border-border/60">
+        <div class="flex justify-between items-center mb-1.5">
+          <span id="stat-sem-week" class="text-[10px] font-mono font-bold text-muted uppercase tracking-wider">Week --</span>
+          <span id="stat-sem-days" class="text-[10px] font-mono text-muted">-- days left</span>
+        </div>
+        <div class="w-full bg-background rounded-full h-1.5 border border-border overflow-hidden">
+          <div id="stat-sem-bar" class="bg-brand h-full transition-all duration-1000 w-0"></div>
+        </div>
+      </div>`;
+  },
+
   render: () => {
     const now = new Date();
     const currMins = now.getHours() * 60 + now.getMinutes();
@@ -2677,9 +2723,8 @@ const Today = {
     const cNext = Utils.dom('card-next');
     const cLater = Utils.dom('list-later');
     const statClassesLeft = Utils.dom('stat-classes-left');
-    const statProgressBar = Utils.dom('stat-sem-bar');
 
-    if (!cNow || !cNext || !cLater || !statClassesLeft || !statProgressBar) return;
+    if (!cNow || !cNext || !cLater || !statClassesLeft) return;
 
     const laundryStatus = DATA.hostel.laundry[dayNum];
     const hostelLaundrySummary = Utils.dom('hostel-laundry-today-summary');
@@ -2767,10 +2812,11 @@ const Today = {
             <h3 class="text-xl font-display font-bold text-primary tracking-tight">${msg}</h3>
             <p class="text-muted text-xs mt-1 font-medium">${isHol ? 'Official Holiday' : 'No academic classes today'}</p>
         </div>`;
+      cNow.insertAdjacentHTML('beforeend', Today.semBarHtml('neutral'));
+      Engine.Semester.update();
       cNext.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center p-4 text-muted"><i class="fa-solid fa-mug-hot text-xl mb-1.5"></i><p class="text-xs">Done for the day</p></div>`;
       cLater.innerHTML = `<div class="p-4 text-center text-xs text-muted">Nothing else scheduled.</div>`;
       statClassesLeft.innerText = "0 left";
-      statProgressBar.style.width = "100%";
       return;
     }
 
@@ -2788,7 +2834,6 @@ const Today = {
     });
 
     statClassesLeft.innerText = `${cLeft} left`;
-    statProgressBar.style.width = currMins > endM ? '100%' : (currMins > startM ? `${((currMins - startM) / (endM - startM)) * 100}%` : '0%');
 
     if (curP) {
       if (curP.c === 'LUNCH' || curP.c === 'LIBRARY') {
@@ -2801,6 +2846,8 @@ const Today = {
           <h3 class="font-display text-2xl font-bold mb-1 text-primary">${curP.c === 'LUNCH' ? 'Lunch Break' : 'Library / Self Study'}</h3>
           <p class="text-xs text-muted mt-auto">Ends in ${curP.e - currMins} mins</p>
         `;
+        cNow.insertAdjacentHTML('beforeend', Today.semBarHtml('neutral'));
+        Engine.Semester.update();
       } else {
         const meta = DATA.courses[curP.c];
         if (meta) {
@@ -2824,12 +2871,16 @@ const Today = {
                   <p class="text-lg font-bold font-mono leading-none">${curP.e - currMins}m</p>
                 </div>
               </div>
+              ${Today.semBarHtml('light')}
             </div>`;
+          Engine.Semester.update();
         }
       }
     } else {
       cNow.className = "card rounded-2xl card-hoverable p-8 flex flex-col justify-center items-center text-center min-h-[220px] shadow-subtle";
       cNow.innerHTML = `<p class="text-muted font-bold text-sm">Free Period</p>`;
+      cNow.insertAdjacentHTML('beforeend', Today.semBarHtml('neutral'));
+      Engine.Semester.update();
     }
 
     if (nxtP) {
@@ -3064,7 +3115,7 @@ const Schedule = {
 
 const Hostel = {
   timingMode: 'weekday',
-  selectedDay: new Date().getDay() || 1,
+  selectedDay: new Date().getDay(),
 
   renderMenu: () => {
     const daySelector = Utils.dom('hostel-day-selector');
