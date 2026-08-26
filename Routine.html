@@ -753,6 +753,19 @@ const CONFIG = {
   semesterEnd: '2026-11-20',
   refreshRateMs: 60000, 
   attendanceTarget: 0.75,
+  // One-time calibration against the university ERP portal (the authoritative
+  // record). Every period recorded on/before this date is replaced in the
+  // GLOBAL total by these official ERP numbers instead of the app's own tally
+  // — this covers early-semester periods the ERP missed due to portal issues,
+  // without touching per-subject breakdowns or any of your saved per-class
+  // marks. Anything dated AFTER this checkpoint is still counted normally,
+  // on top of this baseline. To recalibrate later, just update these three
+  // values from your ERP's "Your Attendance" screen.
+  attendanceCalibration: {
+    asOfDate: '2026-08-23',
+    officialTotal: 119,
+    officialPresent: 119
+  },
   storageKey: 'mca_workspace_v3',
   themeKey: 'mca_workspace_theme',
   exceptionsKey: 'mca_workspace_exceptions_v3',
@@ -947,11 +960,11 @@ const DATA = {
     menu: {
       1: { breakfast: 'Aloo Pyaz Parantha / Butter or Curd / Tea', lunch: 'Rajmah Masala / Aloo Nutri Sabji / Rice / Roti / Curd / Salad / Pickle', snacks: 'Tea / Samosa with Tomato Sauce', dinner: 'Channa Dal Tadka / Gatta Kari Sabji / Rice / Roti / Pickle / Salad / Chutney', dessert: 'Sonpapdi' },
       2: { breakfast: 'Cornflex / Aloo Sandwich / Banana / Tea / Milk', lunch: 'Black Channa / Aloo Capsicum / Peas Pulao / Roti / Salad / Cucumber Raita', snacks: 'Tea / Macroni / Tomato Sauce', dinner: 'Mix Dal / Zimikand Mutter Sabji / Rice / Roti / Salad / Chutney', dessert: 'Kheer' },
-      3: { breakfast: 'Gobhi Parantha / Curd or Butter / Tea', lunch: 'Dal Makhani / Gheeya Sabji / Raita / Nutri Veg Biryani / Roti / Salad / Chutney', snacks: 'Tea / Daanish Bunn', dinner: 'Masar Dal Sabut / Paneer Makhani / Chicken Curry / Rice / Roti / Salad / Chutney', dessert: 'Gulab Jamun' },
+      3: { breakfast: 'Gobhi Parantha / Curd or Butter / Tea', lunch: 'Dal Makhani / Gheeya Sabji / Raita / Nutri Veg Biryani / Roti / Salad / Chutney', snacks: 'Tea / Daanish Bunn', dinner: 'Masar Dal Sabut / Paneer Makhani~Chicken Curry / Rice / Roti / Salad / Chutney', dessert: 'Gulab Jamun' },
       4: { breakfast: 'Idly Sambhar / Green Chutney / Banana / Juice / Tea', lunch: 'Kari Pakora / Aloo Mutter Sabji / Rice / Roti / Salad / Chutney', snacks: 'Tea / Rusk', dinner: 'Rajmah Raseela / Paneer Biryani / Curd / Roti / Salad / Chutney', dessert: 'Besan Burfi' },
       5: { breakfast: 'Ajwain Parantha / Aloo Sabji / Banana / Tea / Milk', lunch: 'White Channa / Kadu Khata Meetha / Raita / Veg Pulao / Pickle / Roti / Salad / Papad', snacks: 'Tea / Maggi / Tomato Sauce', dinner: 'Hari Moong Dal / Veg Manchurian / Fried Rice / Roti / Chutney', dessert: 'Sewiyan' },
       6: { breakfast: 'Onion Paneer Paratha / Butter / Curd / Pickle / Tea', lunch: 'Moongi Masri Dal / Aloo Mushroom Mutter / Curd / Rice / Roti / Salad / Pickle / Chutney', snacks: 'Tea / Patties', dinner: 'Black Chana / Jeera Aloo / Rice / Roti / Salad / Chutney', dessert: 'Kulfi' },
-      0: { breakfast: 'Channa Bhatura / Pickle / Tea', lunch: 'Dal Makhani / Veg Noodles / Curd / Rice / Roti / Salad', snacks: 'Coffee / Biscuit / Chips', dinner: 'Moth Dal / Mutter Paneer / Egg Curry / Roti / Salad / Chutney', dessert: 'Brownie' }
+      0: { breakfast: 'Channa Bhatura / Pickle / Tea', lunch: 'Dal Makhani / Veg Noodles / Curd / Rice / Roti / Salad', snacks: 'Coffee / Biscuit / Chips', dinner: 'Moth Dal / Mutter Paneer~Egg Curry / Roti / Salad / Chutney', dessert: 'Brownie' }
     }
   }
 };
@@ -1017,7 +1030,10 @@ const Utils = {
   createFrag: () => document.createDocumentFragment(),
   renderMealPills: (rawText, isHeroCard = false) => {
     if (!rawText) return `<span class="${isHeroCard ? 'text-white/70' : 'text-muted'}">--</span>`;
-    const items = rawText.split('/').map(s => s.trim()).filter(Boolean);
+    // '~' marks a veg/non-veg alternative pair (e.g. "Paneer Makhani~Chicken Curry")
+    // that should render as ONE pill with a plain slash, not split into two pills.
+    const items = rawText.split('/').map(s => s.trim()).filter(Boolean)
+      .map(item => item.includes('~') ? item.split('~').map(s => s.trim()).join(' / ') : item);
     const pillClasses = isHeroCard 
       ? 'inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold bg-white/20 border border-white/30 text-white shadow-sm backdrop-blur-md'
       : 'inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-surface border border-border text-primary shadow-subtle';
@@ -1628,13 +1644,24 @@ const AttendanceCalc = {
 
   computeStats: () => {
     let gP = 0, gT = 0;
+    let cutP = 0, cutT = 0; // running totals through the calibration checkpoint date only
     const cStats = {};
     Object.keys(DATA.courses).forEach(k => {
       cStats[k] = { p: 0, t: 0, title: DATA.courses[k].title };
     });
 
+    const calib = CONFIG.attendanceCalibration;
+
     Object.entries(State.att).forEach(([k, v]) => {
       const c = AttendanceCalc.getCourseKey(k);
+      const parts = k.split('-');
+      const dateStr = parts.slice(1, 4).join('-');
+
+      // A date later marked as a holiday means no real class happened —
+      // any mark that slipped in for it (e.g. before the exception existed)
+      // shouldn't count anywhere, for any subject.
+      if (DATA.exceptions[dateStr]?.type === 'holiday') return;
+
       if (cStats[c] && (v === 'present' || v === 'absent')) {
         const w = AttendanceCalc.getPeriodWeight(k);
         cStats[c].t += w;
@@ -1643,8 +1670,22 @@ const AttendanceCalc = {
           cStats[c].p += w;
           gP += w;
         }
+        if (calib && dateStr <= calib.asOfDate) {
+          cutT += w;
+          if (v === 'present') cutP += w;
+        }
       }
     });
+
+    // Calibrate the GLOBAL total against the university ERP record: swap out
+    // whatever the app itself computed through the checkpoint date for the
+    // official ERP numbers instead. Per-subject stats (cStats) are left as
+    // pure local data — ERP doesn't provide a subject-level breakdown to
+    // calibrate against, so those stay exactly as your own taps recorded them.
+    if (calib) {
+      gT = Math.max(0, gT - cutT + calib.officialTotal);
+      gP = Math.max(0, gP - cutP + calib.officialPresent);
+    }
 
     const gPct = gT === 0 ? 0 : Math.max(0, Math.min(100, Math.round((gP / gT) * 100)));
     let safeMissCount = 0;
@@ -3167,6 +3208,8 @@ const Hostel = {
     Hostel.renderMenu();
   },
 
+  isTodayHoliday: () => DATA.exceptions[Utils.dateToIso(new Date())]?.type === 'holiday',
+
   renderTimings: () => {
     const list = Utils.dom('hostel-timings');
     if (!list) return;
@@ -3203,8 +3246,8 @@ const Hostel = {
   },
 
   render: () => {
+    Hostel.setTimingMode(Hostel.isTodayHoliday() ? 'weekend' : 'weekday');
     Hostel.renderMenu();
-    Hostel.renderTimings();
   }
 };
 
