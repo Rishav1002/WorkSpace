@@ -642,8 +642,16 @@
           </div>
           <select id="input-holiday-type" class="custom-select sr-only" tabindex="-1">
             <option value="holiday">Holiday (Off)</option>
+            <option value="partial_holiday">Partial Holiday (Select Classes Off)</option>
             <option value="exam">Exam / Test</option>
           </select>
+        </div>
+
+        <div id="partial-extra-fields" class="space-y-2 hidden">
+          <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-2.5">
+            <p class="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mb-2">Select only the classes cancelled for this date. They will not count toward attendance.</p>
+            <div id="partial-slots" class="space-y-1.5"></div>
+          </div>
         </div>
 
         <div id="exam-extra-fields" class="space-y-2 hidden">
@@ -751,7 +759,7 @@
 const CONFIG = {
   semesterStart: '2026-07-29',
   semesterEnd: '2026-11-20',
-  refreshRateMs: 60000, 
+  refreshRateMs: 10000, 
   attendanceTarget: 0.75,
   // One-time calibration against the university ERP portal (the authoritative
   // record). Every period recorded on/before this date is replaced in the
@@ -772,7 +780,8 @@ const CONFIG = {
   tasksKey: 'mca_workspace_tasks_v3',
   notifsKey: 'mca_workspace_notifs_v3',
   syncConfigKey: 'mca_sync_config',
-  syncLastTsKey: 'mca_sync_last_ts'
+  syncLastTsKey: 'mca_sync_last_ts',
+  syncDirtyKey: 'mca_sync_dirty_v1'
 };
 
 const COURSE_SHORTCUTS = {
@@ -1000,6 +1009,23 @@ const Utils = {
     }
     return dates;
   },
+  isSlotCancelled: (dateStr, slot) => {
+    const ex = DATA.exceptions[dateStr];
+    if (!ex) return false;
+    if (ex.type === 'holiday') return true;
+    if (ex.type !== 'partial_holiday') return false;
+    return Array.isArray(ex.cancelled) && ex.cancelled.some(x => x.c === slot.c && Number(x.s) === Number(slot.s));
+  },
+  getActiveSlots: (dateStr, dayNum) => {
+    const ex = DATA.exceptions[dateStr];
+    if (ex?.type === 'holiday') return [];
+    return (DATA.timetable[dayNum] || []).filter(slot => !Utils.isSlotCancelled(dateStr, slot));
+  },
+  getPartialSlots: (dateStr) => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    const dayNum = d.getDay();
+    return DATA.timetable[dayNum] || [];
+  },
   getNextClassForCourse: (courseCode) => {
     const now = new Date();
     const curMins = now.getHours() * 60 + now.getMinutes();
@@ -1012,7 +1038,7 @@ const Utils = {
 
       if (DATA.exceptions[dStr]?.type === 'holiday') continue;
 
-      const daySlots = DATA.timetable[dNum] || [];
+      const daySlots = Utils.getActiveSlots(dStr, dNum);
       for (const slot of daySlots) {
         if (slot.c === courseCode) {
           if (offset === 0 && slot.s <= curMins) continue;
@@ -1054,7 +1080,7 @@ const Utils = {
       'hostel-laundry-hostel-tab', 'deadlines-list',
       'schedule-legend', 'btn-manage-holidays', 'modal-holidays', 'btn-close-holidays',
       'form-add-holiday', 'input-holiday-date', 'input-holiday-type', 'input-holiday-title',
-      'input-exam-category', 'input-exam-course', 'input-exam-stime', 'input-exam-etime', 'exam-extra-fields', 'list-holidays',
+      'input-exam-category', 'input-exam-course', 'input-exam-stime', 'input-exam-etime', 'exam-extra-fields', 'partial-extra-fields', 'partial-slots', 'list-holidays',
       'tab-tasks', 'btn-add-task', 'modal-task', 'btn-close-task', 'form-add-task', 'task-course', 'task-title', 'task-duedate', 'label-task-duedate',
       'tasks-container', 'stat-tasks-pending', 'stat-tasks-due-soon', 'stat-tasks-completed', 'tasks-count-info',
       'modal-notif-center', 'btn-close-notif-center', 'btn-clear-notifs', 'notif-center-list',
@@ -1072,8 +1098,15 @@ const Utils = {
 
 const State = {
   _att: {},
+  _lastSavedAtt: {},
+  _lastSavedTasks: [],
+  _lastSavedNotifs: [],
+  _seeding: false,
+  _seedChangedKeys: [],
+  _bootstrapping: false,
   load: () => {
     try { State._att = JSON.parse(localStorage.getItem(CONFIG.storageKey)) || {}; } catch(e) { State._att = {}; }
+    State._lastSavedAtt = JSON.parse(JSON.stringify(State._att));
     try {
       const storedExceptions = localStorage.getItem(CONFIG.exceptionsKey);
       DATA.exceptions = storedExceptions !== null ? JSON.parse(storedExceptions) : { ...DEFAULT_EXCEPTIONS };
@@ -1086,23 +1119,53 @@ const State = {
     } catch(e) {
       DATA.tasks = [...DEFAULT_TASKS];
     }
+    State._lastSavedTasks = JSON.parse(JSON.stringify(DATA.tasks));
     try {
       const storedNotifs = localStorage.getItem(CONFIG.notifsKey);
       DATA.notifications = storedNotifs !== null ? JSON.parse(storedNotifs) : [];
     } catch(e) {
       DATA.notifications = [];
     }
+    State._lastSavedNotifs = JSON.parse(JSON.stringify(DATA.notifications));
   },
   save: () => {
     try { localStorage.setItem(CONFIG.storageKey, JSON.stringify(State._att)); } catch(e) {}
+    if (!State._seeding && typeof Sync !== 'undefined' && !Sync._applyingRemote) {
+      const old = State._lastSavedAtt || {};
+      const keys = new Set([...Object.keys(old), ...Object.keys(State._att)]);
+      keys.forEach(k => {
+        const before = Object.prototype.hasOwnProperty.call(old, k) ? old[k] : undefined;
+        const after = Object.prototype.hasOwnProperty.call(State._att, k) ? State._att[k] : undefined;
+        if (JSON.stringify(before) !== JSON.stringify(after)) Sync.markRecordDirty('att', k, after === undefined ? null : after);
+      });
+    }
+    State._lastSavedAtt = JSON.parse(JSON.stringify(State._att));
     Sync.markDirty();
   },
   saveTasks: () => {
     try { localStorage.setItem(CONFIG.tasksKey, JSON.stringify(DATA.tasks)); } catch(e) {}
+    if (!State._seeding && typeof Sync !== 'undefined' && !Sync._applyingRemote) {
+      const old = new Map((State._lastSavedTasks || []).map(t => [String(t.id), t]));
+      const cur = new Map(DATA.tasks.map(t => [String(t.id), t]));
+      new Set([...old.keys(), ...cur.keys()]).forEach(k => {
+        const before = old.get(k), after = cur.get(k);
+        if (JSON.stringify(before) !== JSON.stringify(after)) Sync.markRecordDirty('tasks', k, after === undefined ? null : after);
+      });
+    }
+    State._lastSavedTasks = JSON.parse(JSON.stringify(DATA.tasks));
     Sync.markDirty();
   },
   saveNotifs: () => {
     try { localStorage.setItem(CONFIG.notifsKey, JSON.stringify(DATA.notifications)); } catch(e) {}
+    if (!State._seeding && typeof Sync !== 'undefined' && !Sync._applyingRemote) {
+      const old = new Map((State._lastSavedNotifs || []).map(n => [String(n.id), n]));
+      const cur = new Map(DATA.notifications.map(n => [String(n.id), n]));
+      new Set([...old.keys(), ...cur.keys()]).forEach(k => {
+        const before = old.get(k), after = cur.get(k);
+        if (JSON.stringify(before) !== JSON.stringify(after)) Sync.markRecordDirty('notifications', k, after === undefined ? null : after);
+      });
+    }
+    State._lastSavedNotifs = JSON.parse(JSON.stringify(DATA.notifications));
     Sync.markDirty();
   },
   get att() { return State._att; },
@@ -1113,14 +1176,26 @@ const State = {
     window.dispatchEvent(new Event('attendance-updated'));
   },
   seed: () => {
+    State._seeding = true;
     State.load();
     let purged = false;
+    State._seedChangedKeys = [];
     Object.keys(State._att).forEach(key => {
       const parts = key.split('-');
       const dStr = parts.slice(1, 4).join('-');
-      if (DATA.exceptions[dStr]?.type === 'holiday') {
+      const ex = DATA.exceptions[dStr];
+      if (ex?.type === 'holiday') {
         delete State._att[key];
+        State._seedChangedKeys.push(key);
         purged = true;
+      } else if (ex?.type === 'partial_holiday') {
+        const parts2 = key.split('-');
+        const course2 = parts2[0];
+        const start2 = parseInt(parts2[4]);
+        if (Array.isArray(ex.cancelled) && ex.cancelled.some(x => x.c === course2 && Number(x.s) === start2)) {
+          delete State._att[key];
+          purged = true;
+        }
       }
     });
 
@@ -1130,12 +1205,13 @@ const State = {
     while (cur <= end) {
       const dStr = Utils.dateToIso(cur);
       const dNum = cur.getDay();
-      if (DATA.timetable[dNum] && (!DATA.exceptions[dStr] || DATA.exceptions[dStr].type !== 'holiday')) {
-        DATA.timetable[dNum].forEach(p => {
+      if (DATA.timetable[dNum] && DATA.exceptions[dStr]?.type !== 'holiday') {
+        Utils.getActiveSlots(dStr, dNum).forEach(p => {
           if (p.c !== 'LUNCH' && p.c !== 'LIBRARY') {
             const key = `${p.c}-${dStr}-${p.s}`;
             if (!Object.prototype.hasOwnProperty.call(State._att, key)) {
               State._att[key] = 'present';
+              State._seedChangedKeys.push(key);
               changed = true;
             }
           }
@@ -1144,6 +1220,13 @@ const State = {
       cur.setDate(cur.getDate() + 1);
     }
     if (changed || Object.keys(State._att).length === 0) State.save();
+    if (!State._bootstrapping && typeof Sync !== 'undefined' && !Sync._applyingRemote) {
+      State._seedChangedKeys.forEach(key => {
+        const value = Object.prototype.hasOwnProperty.call(State._att, key) ? State._att[key] : null;
+        Sync.markRecordDirty('att', key, value);
+      });
+    }
+    State._seeding = false;
   }
 };
 
@@ -1151,10 +1234,27 @@ const Sync = {
   get config() {
     try { return JSON.parse(localStorage.getItem(CONFIG.syncConfigKey)) || null; } catch(e) { return null; }
   },
+  get dirty() {
+    try { return JSON.parse(localStorage.getItem(CONFIG.syncDirtyKey)) || { att:{}, exceptions:{}, tasks:{}, notifications:{} }; }
+    catch(e) { return { att:{}, exceptions:{}, tasks:{}, notifications:{} }; }
+  },
+  saveDirty: (dirty) => {
+    try { localStorage.setItem(CONFIG.syncDirtyKey, JSON.stringify(dirty)); } catch(e) {}
+  },
+  markRecordDirty: (category, key, value) => {
+    if (Sync._applyingRemote) return;
+    const dirty = Sync.dirty;
+    if (!dirty[category]) dirty[category] = {};
+    dirty[category][key] = value;
+    Sync.saveDirty(dirty);
+    Sync.markDirty();
+  },
   setConfig: (url, token) => {
     localStorage.setItem(CONFIG.syncConfigKey, JSON.stringify({ url, token }));
   },
   _pushTimer: null,
+  _syncing: false,
+  _applyingRemote: false,
   _setIcon: (state) => {
     const icon = document.getElementById('sync-status-icon');
     if (!icon) return;
@@ -1163,13 +1263,19 @@ const Sync = {
     if (state === 'syncing') {
       icon.className = 'fa-solid fa-arrows-rotate fa-spin text-sm pointer-events-none';
       btn.classList.add('text-emerald-500');
+      btn.title = 'Syncing…';
+    } else if (state === 'pending') {
+      icon.className = 'fa-solid fa-cloud-arrow-up text-sm pointer-events-none';
+      btn.classList.add('text-emerald-500');
+      btn.title = 'Changes waiting to sync';
     } else if (state === 'error') {
       icon.className = 'fa-solid fa-triangle-exclamation text-sm pointer-events-none';
       btn.classList.add('text-rose-500');
+      btn.title = 'Sync failed — tap to retry';
     } else {
-      // idle, pending, off — all render as the grey cloud
       icon.className = 'fa-solid fa-cloud-arrow-up text-sm pointer-events-none';
       btn.classList.add('text-muted');
+      btn.title = 'Synced';
     }
   },
   buildPayload: () => ({
@@ -1179,59 +1285,133 @@ const Sync = {
     notifications: DATA.notifications,
     updatedAt: Date.now()
   }),
+  mergeLocalChanges: (remote) => {
+    const dirty = Sync.dirty;
+    const merged = {
+      att: { ...(remote?.att || {}) },
+      exceptions: { ...(remote?.exceptions || {}) },
+      tasks: Array.isArray(remote?.tasks) ? [...remote.tasks] : [],
+      notifications: Array.isArray(remote?.notifications) ? [...remote.notifications] : []
+    };
+
+    Object.entries(dirty.att || {}).forEach(([k,v]) => { if (v === null) delete merged.att[k]; else merged.att[k] = v; });
+    Object.entries(dirty.exceptions || {}).forEach(([k,v]) => { if (v === null) delete merged.exceptions[k]; else merged.exceptions[k] = v; });
+
+    const taskMap = new Map(merged.tasks.map(t => [String(t.id), t]));
+    Object.entries(dirty.tasks || {}).forEach(([k,v]) => { if (v === null) taskMap.delete(k); else taskMap.set(k, v); });
+    merged.tasks = Array.from(taskMap.values());
+
+    const notifMap = new Map(merged.notifications.map(n => [String(n.id), n]));
+    Object.entries(dirty.notifications || {}).forEach(([k,v]) => { if (v === null) notifMap.delete(k); else notifMap.set(k, v); });
+    merged.notifications = Array.from(notifMap.values());
+    return merged;
+  },
   markDirty: () => {
     const cfg = Sync.config;
     if (!cfg || !cfg.url) return;
     Sync._setIcon('pending');
     clearTimeout(Sync._pushTimer);
-    Sync._pushTimer = setTimeout(Sync.push, 1500);
+    Sync._pushTimer = setTimeout(() => Sync.push(), 700);
   },
-  push: async () => {
+  push: async (retry = false) => {
     const cfg = Sync.config;
-    if (!cfg || !cfg.url) return;
+    if (!cfg || !cfg.url || Sync._syncing) return false;
+    Sync._syncing = true;
     Sync._setIcon('syncing');
     try {
+      const payload = Sync.buildPayload();
       const res = await fetch(cfg.url.replace(/\/$/, '') + '/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Sync-Token': cfg.token },
-        body: JSON.stringify(Sync.buildPayload())
+        body: JSON.stringify(payload)
       });
       if (res.status === 409) {
         const body = await res.json();
-        Sync.applyRemote(body.server);
-        Sync._setIcon('idle');
-        return;
-      }
-      if (res.ok) {
-        const body = await res.json();
-        localStorage.setItem(CONFIG.syncLastTsKey, String(body.updatedAt));
-        Sync._setIcon('idle');
-      } else {
+        const merged = Sync.mergeLocalChanges(body.server || {});
+        Sync._applyingRemote = true;
+        State._att = merged.att;
+        DATA.exceptions = merged.exceptions;
+        DATA.tasks = merged.tasks;
+        DATA.notifications = merged.notifications;
+        localStorage.setItem(CONFIG.storageKey, JSON.stringify(State._att));
+        localStorage.setItem(CONFIG.exceptionsKey, JSON.stringify(DATA.exceptions));
+        localStorage.setItem(CONFIG.tasksKey, JSON.stringify(DATA.tasks));
+        localStorage.setItem(CONFIG.notifsKey, JSON.stringify(DATA.notifications));
+        Sync._applyingRemote = false;
+        Sync._syncing = false;
+        if (!retry) return await Sync.push(true);
         Sync._setIcon('error');
+        return false;
       }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      localStorage.setItem(CONFIG.syncLastTsKey, String(body.updatedAt || payload.updatedAt));
+      Sync.saveDirty({ att:{}, exceptions:{}, tasks:{}, notifications:{} });
+      Sync._syncing = false;
+      Sync._setIcon('idle');
+      return true;
     } catch (e) {
+      Sync._syncing = false;
       Sync._setIcon('error');
+      return false;
     }
   },
-  pull: async () => {
+  pull: async (preserveDirty = true) => {
     const cfg = Sync.config;
-    if (!cfg || !cfg.url) { Sync._setIcon('off'); return; }
+    if (!cfg || !cfg.url) { Sync._setIcon('off'); return false; }
+    if (Sync._syncing) return false;
+    Sync._syncing = true;
     Sync._setIcon('syncing');
     try {
       const res = await fetch(cfg.url.replace(/\/$/, '') + '/api/data', {
-        headers: { 'X-Sync-Token': cfg.token }
+        headers: { 'X-Sync-Token': cfg.token, 'Cache-Control': 'no-cache' }
       });
-      if (!res.ok) { Sync._setIcon('error'); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const remote = await res.json();
       const localTs = Number(localStorage.getItem(CONFIG.syncLastTsKey)) || 0;
-      if (remote.updatedAt && remote.updatedAt > localTs) {
-        Sync.applyRemote(remote);
+      const dirty = Sync.dirty;
+      const hasDirty = Object.values(dirty).some(x => x && Object.keys(x).length);
+      if (hasDirty && preserveDirty) {
+        const merged = Sync.mergeLocalChanges(remote);
+        Sync._applyData(merged, remote.updatedAt);
+        Sync._syncing = false;
+        Sync._setIcon('pending');
+        return await Sync.push();
       }
+      if (remote.updatedAt && remote.updatedAt > localTs) Sync._applyData(remote, remote.updatedAt);
+      Sync._syncing = false;
       Sync._setIcon('idle');
+      return true;
     } catch (e) {
+      Sync._syncing = false;
       Sync._setIcon('error');
+      return false;
     }
   },
+  _applyData: (remote, ts) => {
+    Sync._applyingRemote = true;
+    State._att = remote.att || {};
+    DATA.exceptions = remote.exceptions || {};
+    DATA.tasks = remote.tasks || [];
+    DATA.notifications = remote.notifications || [];
+    State._lastSavedAtt = JSON.parse(JSON.stringify(State._att));
+    State._lastSavedTasks = JSON.parse(JSON.stringify(DATA.tasks));
+    State._lastSavedNotifs = JSON.parse(JSON.stringify(DATA.notifications));
+    localStorage.setItem(CONFIG.storageKey, JSON.stringify(State._att));
+    localStorage.setItem(CONFIG.exceptionsKey, JSON.stringify(DATA.exceptions));
+    localStorage.setItem(CONFIG.tasksKey, JSON.stringify(DATA.tasks));
+    localStorage.setItem(CONFIG.notifsKey, JSON.stringify(DATA.notifications));
+    localStorage.setItem(CONFIG.syncLastTsKey, String(ts || Date.now()));
+    Sync._applyingRemote = false;
+    window.dispatchEvent(new Event('attendance-updated'));
+    if (typeof Schedule !== 'undefined') Schedule.render();
+    if (typeof Today !== 'undefined') Today.render();
+    if (typeof Hostel !== 'undefined') Hostel.render();
+    if (typeof TasksManager !== 'undefined') TasksManager.render();
+    if (typeof AttendanceCalc !== 'undefined') { AttendanceCalc.updateHub(); AttendanceCalc.renderBtns(); }
+    if (typeof HolidayManager !== 'undefined') HolidayManager.renderList();
+  },
+  applyRemote: (remote) => Sync._applyData(remote, remote?.updatedAt),
   downloadBackup: () => {
     const payload = Sync.buildPayload();
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -1246,29 +1426,20 @@ const Sync = {
   startPolling: () => {
     if (Sync._pollTimer) return;
     Sync._pollTimer = setInterval(() => {
-      if (!document.hidden) Sync.pull();
-    }, 90000); // every 90s while the tab is open and visible
+      if (!document.hidden && !Sync.dirtyHasChanges()) Sync.pull();
+      else if (!document.hidden) Sync.push();
+    }, 30000);
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) Sync.pull();
+      if (!document.hidden) {
+        if (Sync.dirtyHasChanges()) Sync.push();
+        else Sync.pull();
+      }
+    });
+    window.addEventListener('beforeunload', () => {
+      if (Sync.dirtyHasChanges()) Sync.push();
     });
   },
-  applyRemote: (remote) => {
-    State._att = remote.att || {};
-    DATA.exceptions = remote.exceptions || {};
-    DATA.tasks = remote.tasks || [];
-    DATA.notifications = remote.notifications || [];
-    localStorage.setItem(CONFIG.storageKey, JSON.stringify(State._att));
-    localStorage.setItem(CONFIG.exceptionsKey, JSON.stringify(DATA.exceptions));
-    localStorage.setItem(CONFIG.tasksKey, JSON.stringify(DATA.tasks));
-    localStorage.setItem(CONFIG.notifsKey, JSON.stringify(DATA.notifications));
-    localStorage.setItem(CONFIG.syncLastTsKey, String(remote.updatedAt || Date.now()));
-    window.dispatchEvent(new Event('attendance-updated'));
-    if (typeof Schedule !== 'undefined') Schedule.render();
-    if (typeof Today !== 'undefined') Today.render();
-    if (typeof Hostel !== 'undefined') Hostel.render();
-    if (typeof TasksManager !== 'undefined') TasksManager.render();
-    if (typeof AttendanceCalc !== 'undefined') { AttendanceCalc.updateHub(); AttendanceCalc.renderBtns(); }
-  },
+  dirtyHasChanges: () => Object.values(Sync.dirty).some(x => x && Object.keys(x).length),
   init: () => {
     const btn = document.getElementById('btn-sync-settings');
     const modal = document.getElementById('modal-sync');
@@ -1278,7 +1449,6 @@ const Sync = {
     const btnBackup = document.getElementById('btn-sync-backup');
     const inpUrl = document.getElementById('sync-server-url');
     const inpTok = document.getElementById('sync-token');
-
     const openModal = (e) => {
       if (e) e.preventDefault();
       const existing = Sync.config || { url: '', token: '' };
@@ -1286,43 +1456,29 @@ const Sync = {
       if (inpTok) inpTok.value = existing.token || '';
       if (modal && typeof modal.showModal === 'function') modal.showModal();
     };
-
-    if (btn) {
-      btn.addEventListener('click', openModal);
-      btn.addEventListener('touchend', (e) => {
-        e.stopPropagation();
-        openModal(e);
-      }, { passive: false });
-    }
-
+    if (btn) btn.onclick = openModal;
     if (btnClose && modal) btnClose.onclick = () => modal.close();
     if (modal) modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
-
-    if (form) {
-      form.onsubmit = (e) => {
-        e.preventDefault();
-        const url = inpUrl.value.trim();
-        const token = inpTok.value.trim();
-        Sync.setConfig(url, token);
-        if (modal) modal.close();
-        Sync.pull().then(() => Sync.push());
-      };
-    }
-
-    if (btnPullNow) {
-      btnPullNow.onclick = () => {
-        const url = inpUrl.value.trim();
-        const token = inpTok.value.trim();
-        if (url) Sync.setConfig(url, token);
-        if (modal) modal.close();
-        Sync.pull();
-      };
-    }
-
+    if (form) form.onsubmit = async (e) => {
+      e.preventDefault();
+      const url = inpUrl.value.trim();
+      const token = inpTok.value.trim();
+      Sync.setConfig(url, token);
+      if (modal) modal.close();
+      if (Sync.dirtyHasChanges()) await Sync.push();
+      else await Sync.pull(false);
+    };
+    if (btnPullNow) btnPullNow.onclick = async () => {
+      const url = inpUrl.value.trim();
+      const token = inpTok.value.trim();
+      if (url) Sync.setConfig(url, token);
+      if (modal) modal.close();
+      await Sync.pull();
+    };
     if (btnBackup) btnBackup.onclick = Sync.downloadBackup;
-
-    if (Sync.config && Sync.config.url) Sync.pull();
-    else Sync._setIcon('off');
+    if (Sync.config && Sync.config.url) {
+      if (Sync.dirtyHasChanges()) Sync.push(); else Sync.pull(false);
+    } else Sync._setIcon('off');
     Sync.startPolling();
   }
 };
@@ -1577,6 +1733,8 @@ const DatePicker = {
         cell.className += ' bg-brand text-white shadow-sm ring-2 ring-brand ring-offset-1 ring-offset-surface';
       } else if (ex?.type === 'holiday') {
         cell.className += ' bg-amber-500/15 text-amber-500 border border-amber-500/30';
+      } else if (ex?.type === 'partial_holiday') {
+        cell.className += ' bg-amber-500/10 text-amber-600 border border-amber-500/30';
       } else if (ex?.type === 'exam') {
         cell.className += ' bg-indigo-500/15 text-indigo-500 border border-indigo-500/30';
       } else if (dStr === todayStr) {
@@ -1660,7 +1818,7 @@ const AttendanceCalc = {
       // A date later marked as a holiday means no real class happened —
       // any mark that slipped in for it (e.g. before the exception existed)
       // shouldn't count anywhere, for any subject.
-      if (DATA.exceptions[dateStr]?.type === 'holiday') return;
+      if (Utils.isSlotCancelled(dateStr, { c, s: parseInt(parts[4]) })) return;
 
       if (cStats[c] && (v === 'present' || v === 'absent')) {
         const w = AttendanceCalc.getPeriodWeight(k);
@@ -1727,8 +1885,14 @@ const AttendanceCalc = {
       let pDate = parts.slice(1, 4).join('-');
       let pStart = parseInt(parts[4]);
 
-      const isEditable = (pDate === todayStr && currentMins >= pStart && DATA.exceptions[pDate]?.type !== 'holiday');
+      const slotObj = { c: parts[0], s: pStart };
+      const isCancelled = Utils.isSlotCancelled(pDate, slotObj);
+      const isEditable = (pDate === todayStr && currentMins >= pStart && !isCancelled);
       let btnHtml = '';
+      if (isCancelled) {
+        el.innerHTML = `<span class=\"text-amber-500 text-[10px] font-bold flex items-center gap-1\"><i class=\"fa-solid fa-ban\"></i> Off</span>`;
+        return;
+      }
 
       if (val === 'present') {
         btnHtml = isGrid
@@ -1784,6 +1948,7 @@ const AttendanceCalc = {
       const isToday = (dStr === todayStr);
       const ex = DATA.exceptions[dStr];
       const isHoliday = ex?.type === 'holiday';
+      const isPartial = ex?.type === 'partial_holiday';
       const isExam = ex?.type === 'exam';
       
       let pCount = 0, aCount = 0;
@@ -2125,6 +2290,7 @@ const TasksManager = {
 
   deleteTask: (taskId) => {
     DATA.tasks = DATA.tasks.filter(t => t.id !== taskId);
+    if (typeof Sync !== 'undefined') Sync.markRecordDirty('tasks', String(taskId), null);
     State.saveTasks();
     TasksManager.render();
     AttendanceCalc.updateHub();
@@ -2211,6 +2377,8 @@ const HolidayManager = {
     const form = Utils.dom('form-add-holiday');
     const typeInp = Utils.dom('input-holiday-type');
     const examExtraFields = Utils.dom('exam-extra-fields');
+    const partialExtraFields = Utils.dom('partial-extra-fields');
+    const partialSlots = Utils.dom('partial-slots');
     const examCourseSelect = Utils.dom('input-exam-course');
     const titleInp = Utils.dom('input-holiday-title');
     const btnCancelEdit = Utils.dom('btn-cancel-edit-holiday');
@@ -2220,8 +2388,30 @@ const HolidayManager = {
         .map(([code, c]) => `<option value="${code}">${Utils.getCourseAbbr(code)} - ${c.title}</option>`).join('');
     }
 
+    const renderPartialSlots = () => {
+      if (!partialSlots) return;
+      const dStr = Utils.dom('input-holiday-date')?.value;
+      if (!dStr) { partialSlots.innerHTML = '<p class=\"text-[10px] text-muted\">Select a date first.</p>'; return; }
+      const dayNum = new Date(`${dStr}T00:00:00`).getDay();
+      const slots = DATA.timetable[dayNum] || [];
+      const existing = DATA.exceptions[dStr]?.cancelled || [];
+      const classes = slots.filter(p => p.c !== 'LUNCH' && p.c !== 'LIBRARY');
+      partialSlots.innerHTML = classes.length ? classes.map((p, i) => {
+        const checked = existing.some(x => x.c === p.c && Number(x.s) === Number(p.s));
+        const m = DATA.courses[p.c];
+        return `<label class=\"flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer hover:border-brand/40\">
+          <input type=\"checkbox\" class=\"partial-slot-check accent-brand\" data-course=\"${p.c}\" data-start=\"${p.s}\" ${checked ? 'checked' : ''}>
+          <span class=\"text-[10px] font-bold text-primary flex-1\">${Utils.getCourseAbbr(p.c)} <span class=\"text-muted font-normal\">${m?.title || p.name || p.c}</span></span>
+          <span class=\"text-[10px] font-mono text-muted\">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span>
+        </label>`;
+      }).join('') : '<p class=\"text-[10px] text-muted\">No classes scheduled on this date.</p>';
+    };
+
     const updateFormState = () => {
       if (!typeInp) return;
+      if (examExtraFields) examExtraFields.classList.toggle('hidden', typeInp.value !== 'exam');
+      if (partialExtraFields) partialExtraFields.classList.toggle('hidden', typeInp.value !== 'partial_holiday');
+      if (typeInp.value === 'partial_holiday') renderPartialSlots();
       if (typeInp.value === 'exam') {
         if (examExtraFields) examExtraFields.classList.remove('hidden');
         if (titleInp) {
@@ -2237,9 +2427,9 @@ const HolidayManager = {
       }
     };
 
-    if (typeInp) {
-      typeInp.onchange = updateFormState;
-    }
+    if (typeInp) typeInp.onchange = updateFormState;
+    const dateInpForPartial = Utils.dom('input-holiday-date');
+    if (dateInpForPartial) dateInpForPartial.onchange = () => { if (typeInp?.value === 'partial_holiday') renderPartialSlots(); };
 
     const resetForm = () => {
       HolidayManager.editingDate = null;
@@ -2325,12 +2515,12 @@ const HolidayManager = {
           HolidayManager.removeException(HolidayManager.editingDate, false);
         }
 
-        HolidayManager.addException(
-          dateInp.value, 
-          holidayType, 
-          entryTitle,
-          examPayload
-        );
+        let exceptionData = examPayload;
+        if (holidayType === 'partial_holiday') {
+          exceptionData = Array.from(document.querySelectorAll('.partial-slot-check:checked')).map(cb => ({ c: cb.dataset.course, s: Number(cb.dataset.start) }));
+          if (!exceptionData.length) { Notifications.sendCustom('Select at least one cancelled class.'); return; }
+        }
+        HolidayManager.addException(dateInp.value, holidayType, entryTitle, exceptionData);
 
         resetForm();
         HolidayManager.renderList();
@@ -2357,7 +2547,23 @@ const HolidayManager = {
     Utils.dom('input-holiday-type').value = item.type;
     Dropdown.build('input-holiday-type');
     
-    if (item.type === 'exam') {
+    if (item.type === 'partial_holiday') {
+      Utils.dom('partial-extra-fields').classList.remove('hidden');
+      if (Utils.dom('partial-slots')) {
+        const dayNum = new Date(`${dStr}T00:00:00`).getDay();
+        const slots = (DATA.timetable[dayNum] || []).filter(p => p.c !== 'LUNCH' && p.c !== 'LIBRARY');
+        const cancelled = item.cancelled || [];
+        Utils.dom('partial-slots').innerHTML = slots.map(p => {
+          const checked = cancelled.some(x => x.c === p.c && Number(x.s) === Number(p.s));
+          const m = DATA.courses[p.c];
+          return `<label class=\"flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer\"><input type=\"checkbox\" class=\"partial-slot-check accent-brand\" data-course=\"${p.c}\" data-start=\"${p.s}\" ${checked ? 'checked' : ''}><span class=\"text-[10px] font-bold text-primary flex-1\">${Utils.getCourseAbbr(p.c)} <span class=\"text-muted font-normal\">${m?.title || p.c}</span></span><span class=\"text-[10px] font-mono text-muted\">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span></label>`;
+        }).join('');
+      }
+      Utils.dom('exam-extra-fields').classList.add('hidden');
+      Utils.dom('input-holiday-title').value = item.title || '';
+      Utils.dom('input-holiday-title').placeholder = 'Partial holiday note';
+      Utils.dom('input-holiday-title').required = true;
+    } else if (item.type === 'exam') {
       Utils.dom('exam-extra-fields').classList.remove('hidden');
       Utils.dom('input-exam-category').value = item.examCategory || 'FAT';
       Dropdown.build('input-exam-category');
@@ -2390,6 +2596,7 @@ const HolidayManager = {
     }
     entries.forEach(([dStr, item]) => {
       const isExam = item.type === 'exam';
+      const isPartial = item.type === 'partial_holiday';
       const subAbbr = item.courseCode ? Utils.getCourseAbbr(item.courseCode) : '';
 
       const li = document.createElement('li');
@@ -2399,7 +2606,7 @@ const HolidayManager = {
           <span class="w-2 h-2 rounded-full ${isExam ? 'bg-indigo-500' : 'bg-amber-500'} shrink-0"></span>
           <div class="min-w-0">
             <div class="flex items-center gap-1.5 flex-wrap">
-              ${isExam ? `<span class="bg-indigo-500/15 text-indigo-500 font-bold px-1.5 py-0.5 rounded-lg text-[10px] font-mono">${item.examCategory || 'Exam'}</span>` : ''}
+              ${isExam ? `<span class="bg-indigo-500/15 text-indigo-500 font-bold px-1.5 py-0.5 rounded-lg text-[10px] font-mono">${item.examCategory || 'Exam'}</span>` : (isPartial ? `<span class="bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.5 rounded-lg text-[10px] font-mono">PARTIAL</span>` : '')}
               <span class="font-bold text-primary truncate group-hover:text-brand transition-colors">${subAbbr || item.title}</span>
             </div>
             <span class="block text-[10px] font-mono text-muted mt-0.5">${dStr} • ${item.time || 'All Day'}</span>
@@ -2420,8 +2627,16 @@ const HolidayManager = {
 
   addException: (dStr, type, title, examData = null) => {
     const entry = { type, title };
-    if (examData) {
-      Object.assign(entry, examData);
+    if (examData) Object.assign(entry, examData);
+    if (type === 'partial_holiday') {
+      entry.cancelled = Array.isArray(examData) ? examData : [];
+      Object.keys(State.att).forEach(key => {
+        const parts = key.split('-');
+        const course = parts[0];
+        const start = parseInt(parts[4]);
+        if (parts.slice(1,4).join('-') === dStr && entry.cancelled.some(x => x.c === course && Number(x.s) === start)) delete State.att[key];
+      });
+      State.save();
     }
     DATA.exceptions[dStr] = entry;
 
@@ -2433,6 +2648,7 @@ const HolidayManager = {
     }
 
     localStorage.setItem(CONFIG.exceptionsKey, JSON.stringify(DATA.exceptions));
+    if (typeof Sync !== 'undefined') Sync.markRecordDirty('exceptions', dStr, entry);
     Sync.markDirty();
     window.dispatchEvent(new Event('attendance-updated'));
     Schedule.render();
@@ -2442,7 +2658,7 @@ const HolidayManager = {
 
     const notifTitle = type === 'exam' 
       ? `Exam Scheduled: ${entry.examCategory || 'Test'} (${entry.courseCode ? Utils.getCourseAbbr(entry.courseCode) : ''})` 
-      : 'Holiday Added';
+      : (type === 'partial_holiday' ? 'Partial Holiday Added' : 'Holiday Added');
 
     Notifications.addNotification({
       id: 'notif_ex_' + Date.now(),
@@ -2456,6 +2672,7 @@ const HolidayManager = {
   removeException: (dStr, rerender = true) => {
     delete DATA.exceptions[dStr];
     localStorage.setItem(CONFIG.exceptionsKey, JSON.stringify(DATA.exceptions));
+    if (typeof Sync !== 'undefined') Sync.markRecordDirty('exceptions', dStr, null);
     Sync.markDirty();
     if (rerender) {
       State.seed();
@@ -2549,6 +2766,8 @@ const Calendar = {
 
       if (ex?.type === 'holiday') {
         cell.className += ' bg-amber-500/15 text-amber-500 border-amber-500/30';
+      } else if (ex?.type === 'partial_holiday') {
+        cell.className += ' bg-amber-500/10 text-amber-600 border border-amber-500/30';
       } else if (ex?.type === 'exam') {
         cell.className += ' bg-indigo-500/15 text-indigo-500 border-indigo-500/30';
       } else if (status === 'present') {
@@ -2722,246 +2941,93 @@ const Engine = {
 };
 
 const Today = {
-  // Semester-progress bar markup injected into the bottom of the Live Now
-  // card (id="card-now"), whose innerHTML is fully replaced on every render.
-  // 'light' = white-on-color styling for the colored "live class" state,
-  // 'neutral' = default styling for the plain-background states.
-  semBarHtml: (variant) => {
-    if (variant === 'light') {
-      return `
-        <div class="w-full mt-auto pt-4 border-t border-white/20 relative z-10">
-          <div class="flex justify-between items-center mb-1.5">
-            <span id="stat-sem-week" class="text-[10px] font-mono font-bold text-white/90 uppercase tracking-wider">Week --</span>
-            <span id="stat-sem-days" class="text-[10px] font-mono text-white/80">-- days left</span>
-          </div>
-          <div class="w-full bg-white/20 rounded-full h-1.5 overflow-hidden">
-            <div id="stat-sem-bar" class="bg-white h-full transition-all duration-1000 w-0"></div>
-          </div>
-        </div>`;
-    }
-    return `
-      <div class="w-full mt-auto pt-4 border-t border-border/60">
-        <div class="flex justify-between items-center mb-1.5">
-          <span id="stat-sem-week" class="text-[10px] font-mono font-bold text-muted uppercase tracking-wider">Week --</span>
-          <span id="stat-sem-days" class="text-[10px] font-mono text-muted">-- days left</span>
-        </div>
-        <div class="w-full bg-background rounded-full h-1.5 border border-border overflow-hidden">
-          <div id="stat-sem-bar" class="bg-brand h-full transition-all duration-1000 w-0"></div>
-        </div>
-      </div>`;
+  progressBarHtml: (start, end, label = 'Live progress', light = false) => {
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    const duration = Math.max(1, end - start);
+    const progress = Math.max(0, Math.min(100, ((mins - start) / duration) * 100));
+    const track = light ? 'bg-white/20' : 'bg-background';
+    const fill = light ? 'bg-white' : 'bg-brand';
+    const text = light ? 'text-white/85' : 'text-muted';
+    return `<div class="w-full mt-auto pt-4 border-t ${light ? 'border-white/20' : 'border-border/60'} relative z-10">
+      <div class="flex justify-between items-center mb-1.5"><span class="text-[10px] font-mono font-bold ${text} uppercase tracking-wider">${label}</span><span class="text-[10px] font-mono ${text}">${Math.round(progress)}%</span></div>
+      <div class="w-full ${track} rounded-full h-1.5 overflow-hidden"><div class="${fill} h-full rounded-full transition-all duration-1000" style="width:${progress}%"></div></div>
+    </div>`;
   },
-
+  dayProgressHtml: () => Today.progressBarHtml(0, 1440, 'Day progress', false),
   render: () => {
     const now = new Date();
-    const currMins = now.getHours() * 60 + now.getMinutes();
+    const currMins = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
     const dayNum = now.getDay();
     const todayStr = Utils.dateToIso(now);
-    
     const headerDate = Utils.dom('header-date');
-    if (headerDate) headerDate.innerText = now.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
-
-    const cNow = Utils.dom('card-now');
-    const cNext = Utils.dom('card-next');
-    const cLater = Utils.dom('list-later');
-    const statClassesLeft = Utils.dom('stat-classes-left');
-
+    if (headerDate) headerDate.innerText = now.toLocaleDateString('en-IN', { weekday:'long', day:'2-digit', month:'short', year:'numeric' });
+    const cNow = Utils.dom('card-now'), cNext = Utils.dom('card-next'), cLater = Utils.dom('list-later'), statClassesLeft = Utils.dom('stat-classes-left');
     if (!cNow || !cNext || !cLater || !statClassesLeft) return;
 
+    // Time-based laundry status — never remains "active" after the 4–6 PM window.
     const laundryStatus = DATA.hostel.laundry[dayNum];
-    const hostelLaundrySummary = Utils.dom('hostel-laundry-today-summary');
-    const hostelLaundryHostelTab = Utils.dom('hostel-laundry-hostel-tab');
+    const laundryActive = !!laundryStatus?.active && currMins >= 16 * 60 && currMins < 18 * 60;
+    const laundryMarkup = laundryActive
+      ? `<div class="space-y-1"><span class="text-emerald-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> Drop & Pick Active · until 6:00 PM</span></div>`
+      : (laundryStatus?.active && currMins >= 18 * 60
+        ? `<div class="space-y-1"><span class="text-muted font-bold flex items-center gap-1.5"><i class="fa-solid fa-clock"></i> Laundry slot ended</span></div>`
+        : `<div class="space-y-1"><span class="text-amber-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-calendar-xmark"></i> ${laundryStatus?.desc || 'No Laundry Today'}</span></div>`);
+    if (Utils.dom('hostel-laundry-today-summary')) Utils.dom('hostel-laundry-today-summary').innerHTML = laundryMarkup;
+    if (Utils.dom('hostel-laundry-hostel-tab')) Utils.dom('hostel-laundry-hostel-tab').innerHTML = laundryMarkup;
 
-    const laundryMarkup = laundryStatus.active
-      ? `<div class="space-y-1"><span class="text-emerald-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> ${laundryStatus.desc}</span></div>`
-      : `<div class="space-y-1"><span class="text-amber-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-calendar-xmark"></i> ${laundryStatus.desc}</span></div>`;
-
-    if (hostelLaundrySummary) hostelLaundrySummary.innerHTML = laundryMarkup;
-    if (hostelLaundryHostelTab) hostelLaundryHostelTab.innerHTML = laundryMarkup;
-
+    // Hostel next meal.
     const hostelTodayMenu = DATA.hostel.menu[dayNum];
     const isHoliday = DATA.exceptions[todayStr]?.type === 'holiday';
     const isWeekend = dayNum === 0 || dayNum === 6;
-    
-    const hostelActualIsWeekend = isWeekend || isHoliday;
-    const hostelActualTimings = hostelActualIsWeekend ? DATA.hostel.timings.weekend : DATA.hostel.timings.weekday;
-    let hostelNextMeal = hostelActualTimings.find(t => currMins < t.e);
-    let hostelNextMenuTxt = '';
-    let isDinnerTime = false;
-    let isTomorrow = false;
-
+    const hostelActualTimings = (isWeekend || isHoliday) ? DATA.hostel.timings.weekend : DATA.hostel.timings.weekday;
+    let hostelNextMeal = hostelActualTimings.find(t => currMins < t.e), hostelNextMenuTxt = '', isDinnerTime = false, isTomorrow = false;
     if (hostelNextMeal) {
-      let mealKey = hostelNextMeal.name.toLowerCase();
-      if (mealKey.includes('snack')) mealKey = 'snacks';
-      if (mealKey === 'dinner') isDinnerTime = true;
-      hostelNextMenuTxt = hostelTodayMenu[mealKey] || 'Hostel mess scheduled';
+      let mealKey = hostelNextMeal.name.toLowerCase(); if (mealKey.includes('snack')) mealKey = 'snacks';
+      isDinnerTime = mealKey === 'dinner'; hostelNextMenuTxt = hostelTodayMenu[mealKey] || 'Hostel mess scheduled';
     } else {
       isTomorrow = true;
-      const tmrw = new Date(now);
-      tmrw.setDate(now.getDate() + 1);
-      const tmrwDay = tmrw.getDay();
-      const tmrwStr = Utils.dateToIso(tmrw);
-      const tmrwIsHoliday = DATA.exceptions[tmrwStr]?.type === 'holiday';
-      const tmrwIsWeekend = tmrwDay === 0 || tmrwDay === 6;
-      const tmrwUsesWeekendTimings = tmrwIsWeekend || tmrwIsHoliday;
-
-      const tmrwTimings = tmrwUsesWeekendTimings ? DATA.hostel.timings.weekend : DATA.hostel.timings.weekday;
-      hostelNextMeal = tmrwTimings[0];
-      hostelNextMenuTxt = DATA.hostel.menu[tmrwDay].breakfast;
+      const tmrw = new Date(now); tmrw.setDate(now.getDate()+1);
+      const td = tmrw.getDay(), ts = Utils.dateToIso(tmrw);
+      const tt = (td===0 || td===6 || DATA.exceptions[ts]?.type==='holiday') ? DATA.hostel.timings.weekend : DATA.hostel.timings.weekday;
+      hostelNextMeal = tt[0]; hostelNextMenuTxt = DATA.hostel.menu[td].breakfast;
     }
-
-    const hostelHeaderCont = Utils.dom('hostel-meal-header-container');
-    const hostelNextTitleEl = Utils.dom('hostel-next-title');
-    const hostelNextMenuEl = Utils.dom('hostel-next-menu');
-    
-    if (hostelHeaderCont) {
-      hostelHeaderCont.innerHTML = `
-        <span class="bg-white/20 backdrop-blur-md border border-white/25 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 shadow-sm shrink-0 whitespace-nowrap">
-          <div class="w-1.5 h-1.5 rounded-full ${isTomorrow ? 'bg-amber-300' : 'bg-white'} animate-pulse"></div> ${isTomorrow ? "Tomorrow" : "Next Meal"}
-        </span>
-        <span class="font-mono text-xs font-bold text-white/95 bg-black/25 px-2.5 py-1 rounded-lg backdrop-blur-md border border-white/10 shadow-sm shrink-0 whitespace-nowrap">
-          ${hostelNextMeal.time}
-        </span>
-      `;
-    }
-
+    const hostelHeaderCont = Utils.dom('hostel-meal-header-container'), hostelNextTitleEl = Utils.dom('hostel-next-title'), hostelNextMenuEl = Utils.dom('hostel-next-menu');
+    if (hostelHeaderCont) hostelHeaderCont.innerHTML = `<span class="bg-white/20 backdrop-blur-md border border-white/25 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 shadow-sm shrink-0 whitespace-nowrap"><div class="w-1.5 h-1.5 rounded-full ${isTomorrow?'bg-amber-300':'bg-white'} animate-pulse"></div>${isTomorrow?'Tomorrow':'Next Meal'}</span><span class="font-mono text-xs font-bold text-white/95 bg-black/25 px-2.5 py-1 rounded-lg backdrop-blur-md border border-white/10 shadow-sm shrink-0 whitespace-nowrap">${hostelNextMeal.time}</span>`;
     if (hostelNextTitleEl) hostelNextTitleEl.innerText = hostelNextMeal.name;
-    
-    if (hostelNextMenuEl) {
-      if (isDinnerTime && hostelTodayMenu.dessert) {
-        hostelNextMenuEl.innerHTML = `
-          <div class="space-y-2">
-            <div>${Utils.renderMealPills(hostelNextMenuTxt, true)}</div>
-            <div class="pt-1.5 border-t border-white/20">
-              <div class="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold bg-amber-400 text-neutral-900 shadow-sm">
-                ${hostelTodayMenu.dessert}
-              </div>
-            </div>
-          </div>`;
-      } else {
-        hostelNextMenuEl.innerHTML = Utils.renderMealPills(hostelNextMenuTxt, true);
-      }
+    if (hostelNextMenuEl) hostelNextMenuEl.innerHTML = Utils.renderMealPills(hostelNextMenuTxt, true);
+
+    const ex = DATA.exceptions[todayStr];
+    if (ex?.type === 'holiday') {
+      cNow.className = 'card rounded-2xl card-hoverable p-8 flex flex-col justify-center items-center text-center min-h-[220px] shadow-subtle';
+      cNow.innerHTML = `<div class="relative z-10 flex flex-col items-center justify-center"><i class="fa-solid fa-umbrella-beach text-rose-500 text-4xl mb-3"></i><h3 class="text-xl font-display font-bold text-primary tracking-tight">${ex.title || 'Holiday'}</h3><p class="text-muted text-xs mt-1 font-medium">Official Holiday</p></div>${Today.dayProgressHtml()}`;
+      cNext.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center p-4 text-muted"><i class="fa-solid fa-mug-hot text-xl mb-1.5"></i><p class="text-xs">No classes today</p></div>`;
+      cLater.innerHTML = `<div class="p-4 text-center text-xs text-muted">Nothing else scheduled.</div>`; statClassesLeft.innerText='0 left'; return;
     }
 
-    const isException = DATA.exceptions[todayStr];
-    if (dayNum === 1 || dayNum === 2 || isException?.type === 'holiday') {
-      const isHol = isException?.type === 'holiday';
-      const msg = isException?.title || "Free Day";
-      cNow.className = "card rounded-2xl card-hoverable p-8 flex flex-col justify-center items-center text-center min-h-[220px] shadow-subtle";
-      cNow.innerHTML = `
-        <div class="relative z-10 flex flex-col items-center justify-center">
-            <i class="fa-solid ${isHol ? 'fa-umbrella-beach text-rose-500' : 'fa-mug-hot text-brand'} text-4xl mb-3"></i>
-            <h3 class="text-xl font-display font-bold text-primary tracking-tight">${msg}</h3>
-            <p class="text-muted text-xs mt-1 font-medium">${isHol ? 'Official Holiday' : 'No academic classes today'}</p>
-        </div>`;
-      cNow.insertAdjacentHTML('beforeend', Today.semBarHtml('neutral'));
-      Engine.Semester.update();
-      cNext.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center p-4 text-muted"><i class="fa-solid fa-mug-hot text-xl mb-1.5"></i><p class="text-xs">Done for the day</p></div>`;
-      cLater.innerHTML = `<div class="p-4 text-center text-xs text-muted">Nothing else scheduled.</div>`;
-      statClassesLeft.innerText = "0 left";
-      return;
-    }
-
-    const sched = DATA.timetable[dayNum] || [];
-    let curP = null, nxtP = null, latP = [], cLeft = 0, startM = 1440, endM = 0;
-
+    const sched = Utils.getActiveSlots(todayStr, dayNum);
+    let curP=null, nxtP=null, latP=[], cLeft=0;
     sched.forEach(p => {
-      if (p.s < startM) startM = p.s;
-      if (p.e > endM) endM = p.e;
-      if (currMins >= p.s && currMins < p.e) curP = p;
-      else if (p.s > currMins) {
-        if (p.c !== 'LUNCH' && p.c !== 'LIBRARY') cLeft++;
-        if (!nxtP) nxtP = p; else latP.push(p);
-      }
+      if (currMins >= p.s && currMins < p.e) curP=p;
+      else if (p.s > currMins) { if(p.c!=='LUNCH'&&p.c!=='LIBRARY') cLeft++; if(!nxtP)nxtP=p; else latP.push(p); }
     });
-
     statClassesLeft.innerText = `${cLeft} left`;
 
     if (curP) {
-      if (curP.c === 'LUNCH' || curP.c === 'LIBRARY') {
-        cNow.className = `card rounded-2xl card-hoverable p-6 min-h-[220px] flex flex-col shadow-subtle`;
-        cNow.innerHTML = `
-          <div class="flex justify-between items-start mb-4">
-            <span class="bg-surface-hover text-muted border border-border px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase"><i class="fa-solid fa-mug-saucer mr-1"></i> Break</span>
-            <span class="font-mono text-xs font-bold text-muted">${Utils.formatMins(curP.s)} - ${Utils.formatMins(curP.e)}</span>
-          </div>
-          <h3 class="font-display text-2xl font-bold mb-1 text-primary">${curP.c === 'LUNCH' ? 'Lunch Break' : 'Library / Self Study'}</h3>
-          <p class="text-xs text-muted mt-auto">Ends in ${curP.e - currMins} mins</p>
-        `;
-        cNow.insertAdjacentHTML('beforeend', Today.semBarHtml('neutral'));
-        Engine.Semester.update();
+      if (curP.c==='LUNCH' || curP.c==='LIBRARY') {
+        cNow.className='card rounded-2xl card-hoverable p-6 min-h-[220px] flex flex-col shadow-subtle';
+        cNow.innerHTML=`<div class="flex justify-between items-start mb-4"><span class="bg-surface-hover text-muted border border-border px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase"><i class="fa-solid fa-mug-saucer mr-1"></i> Break</span><span class="font-mono text-xs font-bold text-muted">${Utils.formatMins(curP.s)} - ${Utils.formatMins(curP.e)}</span></div><h3 class="font-display text-2xl font-bold mb-1 text-primary">${curP.c==='LUNCH'?'Lunch Break':'Library / Self Study'}</h3><p class="text-xs text-muted mt-auto">Ends in ${Math.ceil(curP.e-currMins)} mins</p>${Today.progressBarHtml(curP.s,curP.e,'Current period')}`;
       } else {
-        const meta = DATA.courses[curP.c];
-        if (meta) {
-          const t = TOKENS.colors[meta.token] || TOKENS.colors.blue;
-          cNow.className = `card rounded-2xl card-hoverable p-6 min-h-[220px] flex flex-col relative overflow-hidden ${t.bg} text-white shadow-glow group`;
-          cNow.style.setProperty('--glow-color', t.hex);
-          cNow.innerHTML = `
-            <div class="relative z-10 flex flex-col h-full">
-              <div class="flex justify-between items-start mb-3">
-                <span class="bg-white/20 backdrop-blur-md text-white px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div> Live Now</span>
-                <span class="font-mono text-xs font-bold text-white/90 bg-black/15 px-2 py-0.5 rounded-lg">${Utils.formatMins(curP.s)} - ${Utils.formatMins(curP.e)}</span>
-              </div>
-              <h3 class="font-display text-2xl font-bold mb-4 mt-auto text-white tracking-tight">${curP.name || meta.title}</h3>
-              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-auto">
-                <div class="flex flex-wrap items-center gap-2">
-                  <div class="text-white text-xs font-semibold bg-black/15 px-2.5 py-1 rounded-lg border border-white/10"><i class="fa-solid fa-location-dot mr-1"></i>${curP.r}</div>
-                  <div class="text-white text-xs font-semibold bg-black/15 px-2.5 py-1 rounded-lg border border-white/10"><i class="fa-solid fa-user-chalkboard mr-1"></i>${curP.teacher || meta.teacher}</div>
-                </div>
-                <div class="text-right">
-                  <p class="text-[10px] font-mono uppercase opacity-80">Ends in</p>
-                  <p class="text-lg font-bold font-mono leading-none">${curP.e - currMins}m</p>
-                </div>
-              </div>
-              ${Today.semBarHtml('light')}
-            </div>`;
-          Engine.Semester.update();
-        }
+        const meta=DATA.courses[curP.c];
+        if(meta){const t=TOKENS.colors[meta.token]||TOKENS.colors.blue;cNow.className=`card rounded-2xl card-hoverable p-6 min-h-[220px] flex flex-col relative overflow-hidden ${t.bg} text-white shadow-glow group`;cNow.style.setProperty('--glow-color',t.hex);cNow.innerHTML=`<div class="relative z-10 flex flex-col h-full"><div class="flex justify-between items-start mb-3"><span class="bg-white/20 backdrop-blur-md text-white px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase flex items-center gap-1.5"><div class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div> Live Now</span><span class="font-mono text-xs font-bold text-white/90 bg-black/15 px-2 py-0.5 rounded-lg">${Utils.formatMins(curP.s)} - ${Utils.formatMins(curP.e)}</span></div><h3 class="font-display text-2xl font-bold mb-4 mt-auto text-white tracking-tight">${curP.name||meta.title}</h3><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-auto"><div class="flex flex-wrap items-center gap-2"><div class="text-white text-xs font-semibold bg-black/15 px-2.5 py-1 rounded-lg border border-white/10"><i class="fa-solid fa-location-dot mr-1"></i>${curP.r}</div><div class="text-white text-xs font-semibold bg-black/15 px-2.5 py-1 rounded-lg border border-white/10"><i class="fa-solid fa-user-chalkboard mr-1"></i>${curP.teacher||meta.teacher}</div></div><div class="text-right"><p class="text-[10px] font-mono uppercase opacity-80">Ends in</p><p class="text-lg font-bold font-mono leading-none">${Math.ceil(curP.e-currMins)}m</p></div></div>${Today.progressBarHtml(curP.s,curP.e,'Live progress',true)}</div>`;}
       }
     } else {
-      cNow.className = "card rounded-2xl card-hoverable p-8 flex flex-col justify-center items-center text-center min-h-[220px] shadow-subtle";
-      cNow.innerHTML = `<p class="text-muted font-bold text-sm">Free Period</p>`;
-      cNow.insertAdjacentHTML('beforeend', Today.semBarHtml('neutral'));
-      Engine.Semester.update();
+      cNow.className='card rounded-2xl card-hoverable p-8 flex flex-col justify-center items-center text-center min-h-[220px] shadow-subtle';
+      cNow.innerHTML=`<div class="flex flex-col items-center"><i class="fa-regular fa-clock text-2xl text-brand mb-2"></i><p class="text-primary font-bold text-sm">Free Period</p><p class="text-muted text-xs mt-1">${nxtP ? `Next class at ${Utils.formatMins(nxtP.s)}` : 'No more classes today'}</p></div>${Today.dayProgressHtml()}`;
     }
 
-    if (nxtP) {
-      const isBrk = nxtP.c === 'LUNCH' || nxtP.c === 'LIBRARY';
-      const m = isBrk ? null : DATA.courses[nxtP.c];
-      const t = isBrk ? TOKENS.colors.slate : (m ? TOKENS.colors[m.token] : TOKENS.colors.blue);
-      const startsIn = nxtP.s - currMins;
-      const tStr = startsIn < 60 ? `${startsIn} min` : `${Math.floor(startsIn / 60)}h ${startsIn % 60}m`;
-      const title = isBrk ? (nxtP.c === 'LUNCH' ? 'Lunch Break' : 'Library') : (nxtP.name || (m ? m.title : nxtP.c));
-
-      cNext.innerHTML = `
-        <div class="flex justify-between items-center mb-3">
-          <span class="text-[10px] font-bold uppercase tracking-wider ${t.text} ${t.light} px-2 py-0.5 rounded-lg">${tStr}</span>
-          <span class="font-mono text-xs text-muted font-bold">${Utils.formatMins(nxtP.s)}</span>
-        </div>
-        <h4 class="font-bold text-primary text-base leading-tight mb-auto pb-3">${title}</h4>
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="flex items-center gap-1.5 text-xs font-semibold text-muted bg-background px-2.5 py-1 rounded-lg border border-border">
-            <i class="fa-solid ${isBrk ? 'fa-mug-hot' : 'fa-door-open'} text-[11px]"></i> ${nxtP.r || 'Campus'}
-          </div>
-          ${!isBrk ? `<div class="flex items-center gap-1.5 text-xs font-semibold text-muted bg-background px-2.5 py-1 rounded-lg border border-border"><i class="fa-solid fa-user-chalkboard text-[11px]"></i> ${nxtP.teacher || (m ? m.teacher : '')}</div>` : ''}
-        </div>`;
-    } else {
-      cNext.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-center p-4 text-muted"><p class="text-xs font-medium">Done for the day ✨</p></div>`;
-    }
-
-    cLater.innerHTML = latP.length > 0 ? latP.map(p => {
-      const isBrk = p.c === 'LUNCH' || p.c === 'LIBRARY';
-      const cObj = DATA.courses[p.c];
-      return `
-        <div class="flex items-center gap-3 p-2.5 hover:bg-surface-hover transition-colors rounded-xl">
-          <div class="w-1 h-7 rounded-full ${isBrk || !cObj ? 'bg-border' : TOKENS.colors[cObj.token]?.bg}"></div>
-          <div class="flex-1 min-w-0">
-            <p class="text-xs font-bold text-primary truncate">${isBrk ? (p.c === 'LUNCH' ? 'Lunch Break' : 'Library') : (p.name || cObj?.title)}</p>
-            <div class="flex items-center gap-2 text-[10px] font-mono text-muted mt-0.5">
-              <span>${Utils.formatMins(p.s)}</span> • <span>${p.r || 'Campus'}</span>
-            </div>
-          </div>
-        </div>`;
-    }).join('') : `<div class="p-4 text-center text-xs text-muted">Nothing else scheduled.</div>`;
+    if(nxtP){const isBrk=nxtP.c==='LUNCH'||nxtP.c==='LIBRARY',m=isBrk?null:DATA.courses[nxtP.c],t=isBrk?TOKENS.colors.slate:(m?TOKENS.colors[m.token]:TOKENS.colors.blue),startsIn=Math.max(0,nxtP.s-currMins),tStr=startsIn<60?`${Math.ceil(startsIn)} min`:`${Math.floor(startsIn/60)}h ${Math.ceil(startsIn%60)}m`,title=isBrk?(nxtP.c==='LUNCH'?'Lunch Break':'Library'):(nxtP.name||(m?m.title:nxtP.c));cNext.innerHTML=`<div class="flex justify-between items-center mb-3"><span class="text-[10px] font-bold uppercase tracking-wider ${t.text} ${t.light} px-2 py-0.5 rounded-lg">${tStr}</span><span class="font-mono text-xs text-muted font-bold">${Utils.formatMins(nxtP.s)}</span></div><h4 class="font-bold text-primary text-base leading-tight mb-auto pb-3">${title}</h4><div class="flex flex-wrap items-center gap-2"><div class="flex items-center gap-1.5 text-xs font-semibold text-muted bg-background px-2.5 py-1 rounded-lg border border-border"><i class="fa-solid ${isBrk?'fa-mug-hot':'fa-door-open'} text-[11px]"></i>${nxtP.r||'Campus'}</div>${!isBrk?`<div class="flex items-center gap-1.5 text-xs font-semibold text-muted bg-background px-2.5 py-1 rounded-lg border border-border"><i class="fa-solid fa-user-chalkboard text-[11px]"></i>${nxtP.teacher||(m?m.teacher:'')}</div>`:''}</div>`;} else cNext.innerHTML=`<div class="h-full flex flex-col items-center justify-center text-center p-4 text-muted"><p class="text-xs font-medium">Done for the day ✨</p></div>`;
+    cLater.innerHTML=latP.length?latP.map(p=>{const isBrk=p.c==='LUNCH'||p.c==='LIBRARY',cObj=DATA.courses[p.c];return `<div class="flex items-center gap-3 p-2.5 hover:bg-surface-hover transition-colors rounded-xl"><div class="w-1 h-7 rounded-full ${isBrk||!cObj?'bg-border':TOKENS.colors[cObj.token]?.bg}"></div><div class="flex-1 min-w-0"><p class="text-xs font-bold text-primary truncate">${isBrk?(p.c==='LUNCH'?'Lunch Break':'Library'):(p.name||cObj?.title)}</p><div class="flex items-center gap-2 text-[10px] font-mono text-muted mt-0.5"><span>${Utils.formatMins(p.s)}</span> • <span>${p.r||'Campus'}</span></div></div></div>`}).join(''):`<div class="p-4 text-center text-xs text-muted">Nothing else scheduled.</div>`;
   }
 };
 
@@ -2993,6 +3059,7 @@ const Schedule = {
       const [yyyy, mm, dd] = dStr.split('-');
       const ex = DATA.exceptions[dStr];
       const isHoliday = ex?.type === 'holiday';
+      const isPartial = ex?.type === 'partial_holiday';
       const isExam = ex?.type === 'exam';
 
       const dayWrapper = document.createElement('div');
@@ -3032,11 +3099,19 @@ const Schedule = {
           </div>`;
       }
 
+      if (isPartial) {
+        const cancelled = ex.cancelled || [];
+        html += `<div class=\"p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-amber-600 dark:text-amber-400 font-bold text-xs shadow-subtle\"><div class=\"flex items-center gap-2.5\"><i class=\"fa-solid fa-clock\"></i><span>${ex.title || 'Partial Holiday'}</span></div><span class=\"text-[10px] uppercase font-mono bg-amber-500/20 px-2 py-0.5 rounded-lg\">${cancelled.length} class${cancelled.length===1?'':'es'} off</span></div>`;
+      }
+
       if (!isHoliday) {
         const daySlots = DATA.timetable[d] || [];
         daySlots.forEach(p => {
+          const cancelled = isPartial && (ex.cancelled || []).some(x => x.c === p.c && Number(x.s) === Number(p.s));
           const pkey = `${p.c}-${dStr}-${p.s}`;
-          if (p.c === 'LUNCH' || p.c === 'LIBRARY') {
+          if (cancelled) {
+            html += `<article class=\"rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/5 p-3.5 relative overflow-hidden\"><div class=\"flex items-center justify-between gap-3\"><div><h4 class=\"font-bold text-xs text-amber-600 dark:text-amber-400\">${p.name || DATA.courses[p.c]?.title || Utils.getCourseAbbr(p.c)}</h4><p class=\"text-[10px] font-mono text-muted mt-1\">${Utils.formatMins(p.s)} - ${Utils.formatMins(p.e)} · Class Cancelled</p></div><span class=\"text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded-lg\"><i class=\"fa-solid fa-ban mr-1\"></i>OFF</span></div></article>`;
+          } else if (p.c === 'LUNCH' || p.c === 'LIBRARY') {
             html += `<div class="bg-background border border-border border-dashed rounded-xl p-2.5 flex justify-center text-[10px] font-mono font-bold text-muted uppercase tracking-wider">${Utils.formatMins(p.s)} - ${Utils.formatMins(p.e)} • ${p.c === 'LUNCH' ? 'LUNCH BREAK' : 'LIBRARY'}</div>`;
           } else {
             const m = DATA.courses[p.c];
@@ -3089,7 +3164,12 @@ const Schedule = {
         while (i < 4) {
           const p = daySlotsGrid.find(x => x.s === slots[i]);
           if (p && p.c !== 'LUNCH') {
-            if (p.c === 'LIBRARY') {
+            const cancelledGrid = DATA.exceptions[dStr]?.type === 'partial_holiday' && (DATA.exceptions[dStr].cancelled || []).some(x => x.c === p.c && Number(x.s) === Number(p.s));
+            if (cancelledGrid) {
+              const spanOff = (p.e - p.s) >= 90 ? 2 : 1;
+              gHtml += `<td colspan=\"${spanOff}\" class=\"p-2 text-center bg-amber-500/5 border-l-2 border-amber-500/30 text-amber-600 dark:text-amber-400\"><span class=\"font-bold text-xs\">${Utils.getCourseAbbr(p.c)}</span><div class=\"text-[10px] font-mono mt-1\">OFF</div></td>`;
+              i += spanOff;
+            } else if (p.c === 'LIBRARY') {
               gHtml += `<td class="text-center text-muted bg-background text-[11px] font-bold">LIB</td>`;
               i++;
             } else {
@@ -3121,7 +3201,12 @@ const Schedule = {
         while (i < slots.length) {
           const p = daySlotsGrid.find(x => x.s === slots[i]);
           if (p && p.c !== 'LUNCH') {
-            if (p.c === 'LIBRARY') {
+            const cancelledGrid = DATA.exceptions[dStr]?.type === 'partial_holiday' && (DATA.exceptions[dStr].cancelled || []).some(x => x.c === p.c && Number(x.s) === Number(p.s));
+            if (cancelledGrid) {
+              const spanOff = (p.e - p.s) >= 90 ? 2 : 1;
+              gHtml += `<td colspan=\"${spanOff}\" class=\"p-2 text-center bg-amber-500/5 border-l-2 border-amber-500/30 text-amber-600 dark:text-amber-400\"><span class=\"font-bold text-xs\">${Utils.getCourseAbbr(p.c)}</span><div class=\"text-[10px] font-mono mt-1\">OFF</div></td>`;
+              i += spanOff;
+            } else if (p.c === 'LIBRARY') {
               gHtml += `<td class="text-center text-muted bg-background text-[11px] font-bold">LIB</td>`;
               i++;
             } else {
@@ -3443,7 +3528,9 @@ const Theme = {
 
 document.addEventListener('DOMContentLoaded', () => {
   Utils.cacheDOM();
+  State._bootstrapping = true;
   State.seed();
+  State._bootstrapping = false;
   Engine.Semester.update();
   Schedule.render();
   AttendanceCalc.init();
