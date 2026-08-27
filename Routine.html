@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#09090b">
 <title>Student Workspace | Academic Suite</title>
 <meta name="description" content="Academic dashboard, timetable, tasks, exams, and attendance tracker.">
+<meta name="app-build" content="Routine v6 - holiday timetable, per-period attendance, time-based laundry, resilient sync">
 
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -766,13 +767,15 @@ const CONFIG = {
   // GLOBAL total by these official ERP numbers instead of the app's own tally
   // — this covers early-semester periods the ERP missed due to portal issues,
   // without touching per-subject breakdowns or any of your saved per-class
-  // marks. Anything dated AFTER this checkpoint is still counted normally,
-  // on top of this baseline. To recalibrate later, just update these three
-  // values from your ERP's "Your Attendance" screen.
+  // marks. The ERP reported 127 attended / 127 conducted through 27-Aug-2026
+  // because some early classes were missing from the portal entirely (not
+  // recorded as absences). Anything dated AFTER this checkpoint is counted
+  // normally on top of this baseline. Update these three values only when the
+  // ERP baseline changes.
   attendanceCalibration: {
-    asOfDate: '2026-08-23',
-    officialTotal: 119,
-    officialPresent: 119
+    asOfDate: '2026-08-27',
+    officialTotal: 127,
+    officialPresent: 127
   },
   storageKey: 'mca_workspace_v3',
   themeKey: 'mca_workspace_theme',
@@ -1017,9 +1020,35 @@ const Utils = {
     return Array.isArray(ex.cancelled) && ex.cancelled.some(x => x.c === slot.c && Number(x.s) === Number(slot.s));
   },
   getActiveSlots: (dateStr, dayNum) => {
-    const ex = DATA.exceptions[dateStr];
-    if (ex?.type === 'holiday') return [];
     return (DATA.timetable[dayNum] || []).filter(slot => !Utils.isSlotCancelled(dateStr, slot));
+  },
+  getSlotWeight: (slot) => {
+    if (!slot) return 1;
+    return Math.max(1, Math.round((Number(slot.e) - Number(slot.s)) / 50));
+  },
+  getAttendanceSlot: (pkey) => {
+    const parts = String(pkey).split('-');
+    if (parts.length < 5) return null;
+    const course = parts[0];
+    const dateStr = parts.slice(1, 4).join('-');
+    const start = Number(parts[4]);
+    if (!course || !dateStr || Number.isNaN(start)) return null;
+    const dayNum = new Date(`${dateStr}T00:00:00`).getDay();
+    return (DATA.timetable[dayNum] || []).find(slot => slot.c === course && Number(slot.s) === start) || null;
+  },
+  getDateAttendanceCounts: (dateStr) => {
+    let present = 0, absent = 0;
+    const prefix = `-${dateStr}-`;
+    for (const [pkey, value] of Object.entries(State.att)) {
+      if (value !== 'present' && value !== 'absent') continue;
+      if (!String(pkey).includes(prefix)) continue;
+      const slot = Utils.getAttendanceSlot(pkey);
+      if (!slot || Utils.isSlotCancelled(dateStr, slot) || slot.c === 'LUNCH' || slot.c === 'LIBRARY') continue;
+      const weight = Utils.getSlotWeight(slot);
+      if (value === 'present') present += weight;
+      else absent += weight;
+    }
+    return { present, absent };
   },
   getPartialSlots: (dateStr) => {
     const d = new Date(`${dateStr}T00:00:00`);
@@ -1306,6 +1335,18 @@ const Sync = {
     merged.notifications = Array.from(notifMap.values());
     return merged;
   },
+  clearSyncedDirty: (snapshot) => {
+    const current = Sync.dirty;
+    const next = { att:{}, exceptions:{}, tasks:{}, notifications:{} };
+    Object.keys(next).forEach(category => {
+      Object.entries(current[category] || {}).forEach(([key, value]) => {
+        const sent = Object.prototype.hasOwnProperty.call(snapshot?.[category] || {}, key)
+          ? snapshot[category][key] : undefined;
+        if (JSON.stringify(sent) !== JSON.stringify(value)) next[category][key] = value;
+      });
+    });
+    Sync.saveDirty(next);
+  },
   markDirty: () => {
     const cfg = Sync.config;
     if (!cfg || !cfg.url) return;
@@ -1320,6 +1361,7 @@ const Sync = {
     Sync._setIcon('syncing');
     try {
       const payload = Sync.buildPayload();
+      const dirtyAtStart = JSON.parse(JSON.stringify(Sync.dirty));
       const res = await fetch(cfg.url.replace(/\/$/, '') + '/api/data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Sync-Token': cfg.token },
@@ -1346,7 +1388,7 @@ const Sync = {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       localStorage.setItem(CONFIG.syncLastTsKey, String(body.updatedAt || payload.updatedAt));
-      Sync.saveDirty({ att:{}, exceptions:{}, tasks:{}, notifications:{} });
+      Sync.clearSyncedDirty(dirtyAtStart);
       Sync._syncing = false;
       Sync._setIcon('idle');
       return true;
@@ -1733,8 +1775,9 @@ const DatePicker = {
         cell.className += ' bg-brand text-white shadow-sm ring-2 ring-brand ring-offset-1 ring-offset-surface';
       } else if (ex?.type === 'holiday') {
         cell.className += ' bg-amber-500/15 text-amber-500 border border-amber-500/30';
-      } else if (ex?.type === 'partial_holiday') {
+      } else if (ex?.type === 'partial_holiday' && allCourseSlotsCancelled) {
         cell.className += ' bg-amber-500/10 text-amber-600 border border-amber-500/30';
+        cell.innerHTML += `<span class="text-[9px] font-mono font-bold mt-0.5">OFF</span>`;
       } else if (ex?.type === 'exam') {
         cell.className += ' bg-indigo-500/15 text-indigo-500 border border-indigo-500/30';
       } else if (dStr === todayStr) {
@@ -1784,25 +1827,15 @@ const AttendanceCalc = {
 
   getCourseKey: (k) => k.split('-')[0],
 
-  // A single scheduled slot can be a genuine double-period class (e.g. a 100-min
-  // lab spanning two 50-min slots), marked with ONE present/absent tap. That one
-  // mark should still count as 2 periods toward totals/percentages, not 1.
-  getPeriodWeight: (pkey) => {
-    const parts = pkey.split('-');
-    const course = parts[0];
-    const dateStr = parts.slice(1, 4).join('-');
-    const startMin = parseInt(parts[4]);
-    if (isNaN(startMin)) return 1;
-    const dow = new Date(`${dateStr}T00:00:00`).getDay();
-    const daySlots = DATA.timetable[dow] || [];
-    const slot = daySlots.find(s => s.c === course && s.s === startMin);
-    if (!slot) return 1;
-    return Math.max(1, Math.round((slot.e - slot.s) / 50));
-  },
+  // Every scheduled 50-minute period counts once. A longer scheduled slot
+  // (for example a 90-minute lab) therefore contributes two periods while
+  // still using one attendance control. Separate slots for the same subject
+  // remain separate attendance records and are each counted independently.
+  getPeriodWeight: (pkey) => Utils.getSlotWeight(Utils.getAttendanceSlot(pkey)),
 
   computeStats: () => {
     let gP = 0, gT = 0;
-    let cutP = 0, cutT = 0; // running totals through the calibration checkpoint date only
+    let cutP = 0, cutT = 0;
     const cStats = {};
     Object.keys(DATA.courses).forEach(k => {
       cStats[k] = { p: 0, t: 0, title: DATA.courses[k].title };
@@ -1841,6 +1874,8 @@ const AttendanceCalc = {
     // pure local data — ERP doesn't provide a subject-level breakdown to
     // calibrate against, so those stay exactly as your own taps recorded them.
     if (calib) {
+      // Replace the app's inferred history with the authoritative ERP baseline.
+      // After 27-Aug-2026, locally recorded periods are added normally.
       gT = Math.max(0, gT - cutT + calib.officialTotal);
       gP = Math.max(0, gP - cutP + calib.officialPresent);
     }
@@ -1890,7 +1925,7 @@ const AttendanceCalc = {
       const isEditable = (pDate === todayStr && currentMins >= pStart && !isCancelled);
       let btnHtml = '';
       if (isCancelled) {
-        el.innerHTML = `<span class=\"text-amber-500 text-[10px] font-bold flex items-center gap-1\"><i class=\"fa-solid fa-ban\"></i> Off</span>`;
+        el.innerHTML = `<span class="text-amber-500 text-[10px] font-bold flex items-center gap-1"><i class="fa-solid fa-ban"></i> Off</span>`;
         return;
       }
 
@@ -1951,13 +1986,7 @@ const AttendanceCalc = {
       const isPartial = ex?.type === 'partial_holiday';
       const isExam = ex?.type === 'exam';
       
-      let pCount = 0, aCount = 0;
-      Object.entries(State.att).forEach(([k, v]) => {
-        if (k.includes(dStr)) {
-          if (v === 'present') pCount++;
-          if (v === 'absent') aCount++;
-        }
-      });
+      const { present: pCount, absent: aCount } = Utils.getDateAttendanceCounts(dStr);
 
       const dayCell = document.createElement('div');
       dayCell.className = `min-h-[48px] rounded-xl p-1.5 flex flex-col justify-between items-stretch border transition-all duration-200 cursor-pointer relative group hover:scale-[1.02] ${
@@ -2391,7 +2420,7 @@ const HolidayManager = {
     const renderPartialSlots = () => {
       if (!partialSlots) return;
       const dStr = Utils.dom('input-holiday-date')?.value;
-      if (!dStr) { partialSlots.innerHTML = '<p class=\"text-[10px] text-muted\">Select a date first.</p>'; return; }
+      if (!dStr) { partialSlots.innerHTML = '<p class="text-[10px] text-muted">Select a date first.</p>'; return; }
       const dayNum = new Date(`${dStr}T00:00:00`).getDay();
       const slots = DATA.timetable[dayNum] || [];
       const existing = DATA.exceptions[dStr]?.cancelled || [];
@@ -2399,12 +2428,12 @@ const HolidayManager = {
       partialSlots.innerHTML = classes.length ? classes.map((p, i) => {
         const checked = existing.some(x => x.c === p.c && Number(x.s) === Number(p.s));
         const m = DATA.courses[p.c];
-        return `<label class=\"flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer hover:border-brand/40\">
-          <input type=\"checkbox\" class=\"partial-slot-check accent-brand\" data-course=\"${p.c}\" data-start=\"${p.s}\" ${checked ? 'checked' : ''}>
-          <span class=\"text-[10px] font-bold text-primary flex-1\">${Utils.getCourseAbbr(p.c)} <span class=\"text-muted font-normal\">${m?.title || p.name || p.c}</span></span>
-          <span class=\"text-[10px] font-mono text-muted\">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span>
+        return `<label class="flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer hover:border-brand/40">
+          <input type="checkbox" class="partial-slot-check accent-brand" data-course="${p.c}" data-start="${p.s}" ${checked ? 'checked' : ''}>
+          <span class="text-[10px] font-bold text-primary flex-1">${Utils.getCourseAbbr(p.c)} <span class="text-muted font-normal">${m?.title || p.name || p.c}</span></span>
+          <span class="text-[10px] font-mono text-muted">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span>
         </label>`;
-      }).join('') : '<p class=\"text-[10px] text-muted\">No classes scheduled on this date.</p>';
+      }).join('') : '<p class="text-[10px] text-muted">No classes scheduled on this date.</p>';
     };
 
     const updateFormState = () => {
@@ -2556,7 +2585,7 @@ const HolidayManager = {
         Utils.dom('partial-slots').innerHTML = slots.map(p => {
           const checked = cancelled.some(x => x.c === p.c && Number(x.s) === Number(p.s));
           const m = DATA.courses[p.c];
-          return `<label class=\"flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer\"><input type=\"checkbox\" class=\"partial-slot-check accent-brand\" data-course=\"${p.c}\" data-start=\"${p.s}\" ${checked ? 'checked' : ''}><span class=\"text-[10px] font-bold text-primary flex-1\">${Utils.getCourseAbbr(p.c)} <span class=\"text-muted font-normal\">${m?.title || p.c}</span></span><span class=\"text-[10px] font-mono text-muted\">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span></label>`;
+          return `<label class="flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer"><input type="checkbox" class="partial-slot-check accent-brand" data-course="${p.c}" data-start="${p.s}" ${checked ? 'checked' : ''}><span class="text-[10px] font-bold text-primary flex-1">${Utils.getCourseAbbr(p.c)} <span class="text-muted font-normal">${m?.title || p.c}</span></span><span class="text-[10px] font-mono text-muted">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span></label>`;
         }).join('');
       }
       Utils.dom('exam-extra-fields').classList.add('hidden');
@@ -2754,11 +2783,23 @@ const Calendar = {
       const cellDate = new Date(Calendar.currentYear, Calendar.currentMonth, i);
       const dStr = Utils.dateToIso(cellDate);
       const ex = DATA.exceptions[dStr];
+      const dayNum = cellDate.getDay();
+      const courseSlots = (DATA.timetable[dayNum] || []).filter(slot => slot.c === Calendar.currentCourse);
+      const activeCourseSlots = courseSlots.filter(slot => !Utils.isSlotCancelled(dStr, slot));
+      const cancelledCourseSlots = courseSlots.filter(slot => Utils.isSlotCancelled(dStr, slot));
+      const allCourseSlotsCancelled = courseSlots.length > 0 && activeCourseSlots.length === 0 && cancelledCourseSlots.length > 0;
 
-      let status = null;
+      let presentPeriods = 0, absentPeriods = 0;
       Object.entries(State.att).forEach(([k, v]) => {
-        if (k.startsWith(`${Calendar.currentCourse}-${dStr}`)) status = v;
+        if (!k.startsWith(`${Calendar.currentCourse}-${dStr}-`)) return;
+        if (v !== 'present' && v !== 'absent') return;
+        const slot = Utils.getAttendanceSlot(k);
+        if (!slot || Utils.isSlotCancelled(dStr, slot)) return;
+        const weight = Utils.getSlotWeight(slot);
+        if (v === 'present') presentPeriods += weight;
+        else absentPeriods += weight;
       });
+      const status = presentPeriods && absentPeriods ? 'mixed' : presentPeriods ? 'present' : absentPeriods ? 'absent' : null;
 
       const cell = document.createElement('div');
       cell.className = 'aspect-square flex flex-col items-center justify-center text-[11px] font-bold rounded-xl relative border transition-all';
@@ -2766,14 +2807,20 @@ const Calendar = {
 
       if (ex?.type === 'holiday') {
         cell.className += ' bg-amber-500/15 text-amber-500 border-amber-500/30';
-      } else if (ex?.type === 'partial_holiday') {
+      } else if (ex?.type === 'partial_holiday' && allCourseSlotsCancelled) {
         cell.className += ' bg-amber-500/10 text-amber-600 border border-amber-500/30';
+        cell.innerHTML += `<span class="text-[9px] font-mono font-bold mt-0.5">OFF</span>`;
       } else if (ex?.type === 'exam') {
         cell.className += ' bg-indigo-500/15 text-indigo-500 border-indigo-500/30';
       } else if (status === 'present') {
         cell.className += ' bg-emerald-500/20 text-emerald-500 border-emerald-500/40';
+        cell.innerHTML += `<span class="text-[9px] font-mono font-bold mt-0.5">${presentPeriods}P</span>`;
       } else if (status === 'absent') {
         cell.className += ' bg-rose-500/20 text-rose-500 border-rose-500/40';
+        cell.innerHTML += `<span class="text-[9px] font-mono font-bold mt-0.5">${absentPeriods}A</span>`;
+      } else if (status === 'mixed') {
+        cell.className += ' bg-purple-500/20 text-purple-500 border-purple-500/40';
+        cell.innerHTML += `<span class="text-[9px] font-mono font-bold mt-0.5">${presentPeriods}P • ${absentPeriods}A</span>`;
       } else {
         cell.className += ' border-border/60 text-primary';
       }
@@ -2921,24 +2968,6 @@ const Notifications = {
   }
 };
 
-const Engine = {
-  Semester: {
-    update: () => {
-      const start = new Date(CONFIG.semesterStart);
-      const end = new Date(CONFIG.semesterEnd);
-      const now = new Date();
-      const totalMs = end - start;
-      const elapsMs = now - start;
-      const weeks = Math.floor(elapsMs / (1000 * 60 * 60 * 24 * 7)) + 1;
-      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-      let pct = Math.max(0, Math.min(100, (elapsMs / totalMs) * 100));
-
-      const el1 = Utils.dom('stat-sem-week'); if (el1) el1.innerText = `Week ${weeks} of ${Math.ceil(totalMs / (1000 * 60 * 60 * 24 * 7))}`;
-      const el2 = Utils.dom('stat-sem-bar'); if (el2) el2.style.width = `${pct}%`;
-      const el3 = Utils.dom('stat-sem-days'); if (el3) el3.innerText = `${daysLeft > 0 ? daysLeft + ' days left' : 'Complete'}`;
-    }
-  }
-};
 
 const Today = {
   progressBarHtml: (start, end, label = 'Live progress', light = false) => {
@@ -2969,10 +2998,12 @@ const Today = {
     const laundryStatus = DATA.hostel.laundry[dayNum];
     const laundryActive = !!laundryStatus?.active && currMins >= 16 * 60 && currMins < 18 * 60;
     const laundryMarkup = laundryActive
-      ? `<div class="space-y-1"><span class="text-emerald-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> Drop & Pick Active · until 6:00 PM</span></div>`
+      ? `<div class="space-y-1"><span class="text-emerald-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> Drop & Pick Active</span><span class="text-[10px] font-mono text-muted block ml-5">4:00 PM - 6:00 PM</span></div>`
       : (laundryStatus?.active && currMins >= 18 * 60
-        ? `<div class="space-y-1"><span class="text-muted font-bold flex items-center gap-1.5"><i class="fa-solid fa-clock"></i> Laundry slot ended</span></div>`
-        : `<div class="space-y-1"><span class="text-amber-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-calendar-xmark"></i> ${laundryStatus?.desc || 'No Laundry Today'}</span></div>`);
+        ? `<div class="space-y-1"><span class="text-muted font-bold flex items-center gap-1.5"><i class="fa-solid fa-clock"></i> Laundry Ended for the Day</span><span class="text-[10px] font-mono text-muted block ml-5">4:00 PM - 6:00 PM</span></div>`
+        : (laundryStatus?.active && currMins < 16 * 60
+          ? `<div class="space-y-1"><span class="text-amber-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-clock"></i> Laundry opens at 4:00 PM</span><span class="text-[10px] font-mono text-muted block ml-5">4:00 PM - 6:00 PM</span></div>`
+          : `<div class="space-y-1"><span class="text-amber-500 font-bold flex items-center gap-1.5"><i class="fa-solid fa-calendar-xmark"></i> ${laundryStatus?.desc || 'No Laundry Today'}</span></div>`));
     if (Utils.dom('hostel-laundry-today-summary')) Utils.dom('hostel-laundry-today-summary').innerHTML = laundryMarkup;
     if (Utils.dom('hostel-laundry-hostel-tab')) Utils.dom('hostel-laundry-hostel-tab').innerHTML = laundryMarkup;
 
@@ -3009,7 +3040,7 @@ const Today = {
     let curP=null, nxtP=null, latP=[], cLeft=0;
     sched.forEach(p => {
       if (currMins >= p.s && currMins < p.e) curP=p;
-      else if (p.s > currMins) { if(p.c!=='LUNCH'&&p.c!=='LIBRARY') cLeft++; if(!nxtP)nxtP=p; else latP.push(p); }
+      else if (p.s > currMins) { if(p.c!=='LUNCH'&&p.c!=='LIBRARY') cLeft += Utils.getSlotWeight(p); if(!nxtP)nxtP=p; else latP.push(p); }
     });
     statClassesLeft.innerText = `${cLeft} left`;
 
@@ -3032,6 +3063,26 @@ const Today = {
 };
 
 const Schedule = {
+  renderExceptionGridCell: (p, dStr, ex) => {
+    const m = DATA.courses[p.c];
+    const title = p.name || m?.title || Utils.getCourseAbbr(p.c);
+    const teacher = p.teacher || m?.teacher || '—';
+    const isHoliday = ex?.type === 'holiday';
+    const status = isHoliday ? 'HOLIDAY' : 'OFF';
+    const icon = isHoliday ? 'fa-umbrella-beach' : 'fa-ban';
+    const note = isHoliday ? (ex?.title || 'Holiday') : 'Class Cancelled';
+    const span = (Number(p.e) - Number(p.s)) >= 90 ? 2 : 1;
+    return `<td colspan="${span}" class="p-2 bg-amber-500/5 border-l-2 border-amber-500/30 text-amber-600 dark:text-amber-400 align-top">
+      <div class="font-bold text-xs leading-tight truncate">${Utils.getCourseAbbr(p.c)}</div>
+      <div class="text-[10px] text-primary/70 font-medium truncate mt-1">${title}</div>
+      <div class="text-[10px] text-muted truncate mt-0.5">${teacher}</div>
+      <div class="flex items-center justify-between gap-1 mt-1.5">
+        <span class="text-[9px] font-mono text-muted">${p.r || '—'}</span>
+        <span class="text-[9px] font-mono font-bold bg-amber-500/10 px-1.5 py-0.5 rounded-md"><i class="fa-solid ${icon} mr-0.5"></i>${status}</span>
+      </div>
+      <div class="text-[9px] text-amber-600/70 dark:text-amber-400/70 truncate mt-1">${note}</div>
+    </td>`;
+  },
   render: () => {
     const dates = Utils.getWeekDates();
     const scheduleTimeline = Utils.dom('schedule-timeline');
@@ -3073,14 +3124,7 @@ const Schedule = {
         <div class="space-y-2.5 mb-6">`;
 
       if (isHoliday) {
-        html += `
-          <div class="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-amber-600 dark:text-amber-400 font-bold text-xs shadow-subtle">
-            <div class="flex items-center gap-2.5">
-              <i class="fa-solid fa-umbrella-beach text-sm"></i>
-              <span>${ex.title}</span>
-            </div>
-            <span class="text-[10px] uppercase font-mono bg-amber-500/20 px-2 py-0.5 rounded-lg">No Classes</span>
-          </div>`;
+        html = html.replace('</header>', `<span class="ml-auto text-[10px] uppercase font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg"><i class="fa-solid fa-umbrella-beach mr-1"></i>${ex.title || 'Holiday'}</span></header>`);
       } else if (isExam) {
         const subAbbr = ex.courseCode ? Utils.getCourseAbbr(ex.courseCode) : '';
         html += `
@@ -3101,16 +3145,35 @@ const Schedule = {
 
       if (isPartial) {
         const cancelled = ex.cancelled || [];
-        html += `<div class=\"p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-amber-600 dark:text-amber-400 font-bold text-xs shadow-subtle\"><div class=\"flex items-center gap-2.5\"><i class=\"fa-solid fa-clock\"></i><span>${ex.title || 'Partial Holiday'}</span></div><span class=\"text-[10px] uppercase font-mono bg-amber-500/20 px-2 py-0.5 rounded-lg\">${cancelled.length} class${cancelled.length===1?'':'es'} off</span></div>`;
+        html += `<div class="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-amber-600 dark:text-amber-400 font-bold text-xs shadow-subtle"><div class="flex items-center gap-2.5"><i class="fa-solid fa-clock"></i><span>${ex.title || 'Partial Holiday'}</span></div><span class="text-[10px] uppercase font-mono bg-amber-500/20 px-2 py-0.5 rounded-lg">${cancelled.length} class${cancelled.length===1?'':'es'} off</span></div>`;
       }
 
-      if (!isHoliday) {
+      {
         const daySlots = DATA.timetable[d] || [];
         daySlots.forEach(p => {
           const cancelled = isPartial && (ex.cancelled || []).some(x => x.c === p.c && Number(x.s) === Number(p.s));
+          const holidayClass = isHoliday && p.c !== 'LUNCH' && p.c !== 'LIBRARY';
           const pkey = `${p.c}-${dStr}-${p.s}`;
-          if (cancelled) {
-            html += `<article class=\"rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/5 p-3.5 relative overflow-hidden\"><div class=\"flex items-center justify-between gap-3\"><div><h4 class=\"font-bold text-xs text-amber-600 dark:text-amber-400\">${p.name || DATA.courses[p.c]?.title || Utils.getCourseAbbr(p.c)}</h4><p class=\"text-[10px] font-mono text-muted mt-1\">${Utils.formatMins(p.s)} - ${Utils.formatMins(p.e)} · Class Cancelled</p></div><span class=\"text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded-lg\"><i class=\"fa-solid fa-ban mr-1\"></i>OFF</span></div></article>`;
+          if (holidayClass || cancelled) {
+            const m = DATA.courses[p.c];
+            const title = p.name || m?.title || Utils.getCourseAbbr(p.c);
+            const teacher = p.teacher || m?.teacher || '—';
+            const room = p.r || '—';
+            const statusLabel = holidayClass ? 'HOLIDAY' : 'OFF';
+            const statusIcon = holidayClass ? 'fa-umbrella-beach' : 'fa-ban';
+            const note = holidayClass ? (ex.title || 'Holiday') : 'Class Cancelled';
+            html += `<article class="rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/5 p-3.5 relative overflow-hidden">
+              <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <h4 class="font-bold text-xs text-amber-600 dark:text-amber-400 truncate">${title}</h4>
+                  <p class="text-[10px] font-mono text-muted mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span>${Utils.formatMins(p.s)} - ${Utils.formatMins(p.e)}</span><span>•</span><span>${room}</span><span>•</span><span>${teacher}</span>
+                  </p>
+                  <p class="text-[10px] text-amber-600/80 dark:text-amber-400/80 font-medium mt-1">${note}</p>
+                </div>
+                <span class="shrink-0 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded-lg"><i class="fa-solid ${statusIcon} mr-1"></i>${statusLabel}</span>
+              </div>
+            </article>`;
           } else if (p.c === 'LUNCH' || p.c === 'LIBRARY') {
             html += `<div class="bg-background border border-border border-dashed rounded-xl p-2.5 flex justify-center text-[10px] font-mono font-bold text-muted uppercase tracking-wider">${Utils.formatMins(p.s)} - ${Utils.formatMins(p.e)} • ${p.c === 'LUNCH' ? 'LUNCH BREAK' : 'LIBRARY'}</div>`;
           } else {
@@ -3153,22 +3216,19 @@ const Schedule = {
       const [yyyy, mm, dd] = dStr.split('-');
       gHtml += `<tr><th scope="row" class="text-left font-normal"><b>${DATA.days[d].slice(0, 3).toUpperCase()}</b><br><span class="text-[10px] font-mono text-muted">${dd}/${mm}</span></th>`;
 
-      if (DATA.exceptions[dStr]?.type === 'holiday') {
-        gHtml += `<td colspan="4" class="text-center text-amber-500 italic bg-amber-500/5 font-bold text-xs">${DATA.exceptions[dStr].title}</td>`;
-        gHtml += `<td class="bg-background text-center font-bold text-muted text-[10px] p-2">LUNCH</td>`;
-        gHtml += `<td colspan="4" class="text-center text-amber-500 italic bg-amber-500/5 font-bold text-xs">${DATA.exceptions[dStr].title}</td>`;
-      } else {
+      {
         let i = 0;
         const daySlotsGrid = DATA.timetable[d] || [];
         
         while (i < 4) {
           const p = daySlotsGrid.find(x => x.s === slots[i]);
           if (p && p.c !== 'LUNCH') {
+            const isHolidayGrid = DATA.exceptions[dStr]?.type === 'holiday';
             const cancelledGrid = DATA.exceptions[dStr]?.type === 'partial_holiday' && (DATA.exceptions[dStr].cancelled || []).some(x => x.c === p.c && Number(x.s) === Number(p.s));
-            if (cancelledGrid) {
-              const spanOff = (p.e - p.s) >= 90 ? 2 : 1;
-              gHtml += `<td colspan=\"${spanOff}\" class=\"p-2 text-center bg-amber-500/5 border-l-2 border-amber-500/30 text-amber-600 dark:text-amber-400\"><span class=\"font-bold text-xs\">${Utils.getCourseAbbr(p.c)}</span><div class=\"text-[10px] font-mono mt-1\">OFF</div></td>`;
-              i += spanOff;
+            if (isHolidayGrid || cancelledGrid) {
+              const span = (Number(p.e) - Number(p.s)) >= 90 ? 2 : 1;
+              gHtml += Schedule.renderExceptionGridCell(p, dStr, DATA.exceptions[dStr]);
+              i += span;
             } else if (p.c === 'LIBRARY') {
               gHtml += `<td class="text-center text-muted bg-background text-[11px] font-bold">LIB</td>`;
               i++;
@@ -3201,11 +3261,12 @@ const Schedule = {
         while (i < slots.length) {
           const p = daySlotsGrid.find(x => x.s === slots[i]);
           if (p && p.c !== 'LUNCH') {
+            const isHolidayGrid = DATA.exceptions[dStr]?.type === 'holiday';
             const cancelledGrid = DATA.exceptions[dStr]?.type === 'partial_holiday' && (DATA.exceptions[dStr].cancelled || []).some(x => x.c === p.c && Number(x.s) === Number(p.s));
-            if (cancelledGrid) {
-              const spanOff = (p.e - p.s) >= 90 ? 2 : 1;
-              gHtml += `<td colspan=\"${spanOff}\" class=\"p-2 text-center bg-amber-500/5 border-l-2 border-amber-500/30 text-amber-600 dark:text-amber-400\"><span class=\"font-bold text-xs\">${Utils.getCourseAbbr(p.c)}</span><div class=\"text-[10px] font-mono mt-1\">OFF</div></td>`;
-              i += spanOff;
+            if (isHolidayGrid || cancelledGrid) {
+              const span = (Number(p.e) - Number(p.s)) >= 90 ? 2 : 1;
+              gHtml += Schedule.renderExceptionGridCell(p, dStr, DATA.exceptions[dStr]);
+              i += span;
             } else if (p.c === 'LIBRARY') {
               gHtml += `<td class="text-center text-muted bg-background text-[11px] font-bold">LIB</td>`;
               i++;
@@ -3531,7 +3592,6 @@ document.addEventListener('DOMContentLoaded', () => {
   State._bootstrapping = true;
   State.seed();
   State._bootstrapping = false;
-  Engine.Semester.update();
   Schedule.render();
   AttendanceCalc.init();
   AttendanceCalc.updateHub();
