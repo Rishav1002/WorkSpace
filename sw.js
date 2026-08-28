@@ -3,7 +3,7 @@
 // the HTML itself (so you always get the latest version when online),
 // cache-first fallback for everything else.
 
-const CACHE_NAME = 'mca-workspace-shell-v1';
+const CACHE_NAME = 'mca-workspace-shell-v2';
 const APP_SHELL = [
   'Routine.html',
   'manifest.json',
