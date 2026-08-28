@@ -1012,15 +1012,30 @@ const Utils = {
     }
     return dates;
   },
+  getTimetableSlot: (dateStr, courseCode, start) => {
+    if (!dateStr || !courseCode || Number.isNaN(Number(start))) return null;
+    const dayNum = new Date(`${dateStr}T00:00:00`).getDay();
+    return (DATA.timetable[dayNum] || []).find(slot =>
+      String(slot.c) === String(courseCode) && Number(slot.s) === Number(start)
+    ) || null;
+  },
   isSlotCancelled: (dateStr, slot) => {
+    if (!slot || !dateStr) return false;
     const ex = DATA.exceptions[dateStr];
     if (!ex) return false;
     if (ex.type === 'holiday') return true;
-    if (ex.type !== 'partial_holiday') return false;
-    return Array.isArray(ex.cancelled) && ex.cancelled.some(x => x.c === slot.c && Number(x.s) === Number(slot.s));
+    if (ex.type !== 'partial_holiday' || !Array.isArray(ex.cancelled)) return false;
+
+    // Always resolve against the canonical DATA.timetable slot for this date.
+    // This keeps checkbox/save/reload comparisons tied to the same c+s identity.
+    const canonical = Utils.getTimetableSlot(dateStr, slot.c, slot.s) || slot;
+    return ex.cancelled.some(cancelled =>
+      String(cancelled.c) === String(canonical.c) && Number(cancelled.s) === Number(canonical.s)
+    );
   },
   getActiveSlots: (dateStr, dayNum) => {
-    return (DATA.timetable[dayNum] || []).filter(slot => !Utils.isSlotCancelled(dateStr, slot));
+    const slots = DATA.timetable[dayNum] || [];
+    return slots.filter(slot => !Utils.isSlotCancelled(dateStr, slot));
   },
   getSlotWeight: (slot) => {
     if (!slot) return 1;
@@ -2421,19 +2436,21 @@ const HolidayManager = {
       if (!partialSlots) return;
       const dStr = Utils.dom('input-holiday-date')?.value;
       if (!dStr) { partialSlots.innerHTML = '<p class="text-[10px] text-muted">Select a date first.</p>'; return; }
-      const dayNum = new Date(`${dStr}T00:00:00`).getDay();
-      const slots = DATA.timetable[dayNum] || [];
+      const slots = Utils.getPartialSlots(dStr);
       const existing = DATA.exceptions[dStr]?.cancelled || [];
-      const classes = slots.filter(p => p.c !== 'LUNCH' && p.c !== 'LIBRARY');
-      partialSlots.innerHTML = classes.length ? classes.map((p, i) => {
+      const selectableSlots = slots;
+      partialSlots.innerHTML = selectableSlots.length ? selectableSlots.map(p => {
         const checked = existing.some(x => x.c === p.c && Number(x.s) === Number(p.s));
-        const m = DATA.courses[p.c];
+        const isBreak = p.c === 'LUNCH' || p.c === 'LIBRARY';
+        const m = isBreak ? null : DATA.courses[p.c];
+        const label = isBreak ? 'Break' : (m?.title || p.name || p.c);
+        const abbr = isBreak ? 'Break' : Utils.getCourseAbbr(p.c);
         return `<label class="flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer hover:border-brand/40">
           <input type="checkbox" class="partial-slot-check accent-brand" data-course="${p.c}" data-start="${p.s}" ${checked ? 'checked' : ''}>
-          <span class="text-[10px] font-bold text-primary flex-1">${Utils.getCourseAbbr(p.c)} <span class="text-muted font-normal">${m?.title || p.name || p.c}</span></span>
+          <span class="text-[10px] font-bold text-primary flex-1">${abbr} <span class="text-muted font-normal">${label}</span></span>
           <span class="text-[10px] font-mono text-muted">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span>
         </label>`;
-      }).join('') : '<p class="text-[10px] text-muted">No classes scheduled on this date.</p>';
+      }).join('') : '<p class="text-[10px] text-muted">No periods scheduled on this date.</p>';
     };
 
     const updateFormState = () => {
@@ -2579,13 +2596,15 @@ const HolidayManager = {
     if (item.type === 'partial_holiday') {
       Utils.dom('partial-extra-fields').classList.remove('hidden');
       if (Utils.dom('partial-slots')) {
-        const dayNum = new Date(`${dStr}T00:00:00`).getDay();
-        const slots = (DATA.timetable[dayNum] || []).filter(p => p.c !== 'LUNCH' && p.c !== 'LIBRARY');
+        const slots = Utils.getPartialSlots(dStr);
         const cancelled = item.cancelled || [];
         Utils.dom('partial-slots').innerHTML = slots.map(p => {
           const checked = cancelled.some(x => x.c === p.c && Number(x.s) === Number(p.s));
-          const m = DATA.courses[p.c];
-          return `<label class="flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer"><input type="checkbox" class="partial-slot-check accent-brand" data-course="${p.c}" data-start="${p.s}" ${checked ? 'checked' : ''}><span class="text-[10px] font-bold text-primary flex-1">${Utils.getCourseAbbr(p.c)} <span class="text-muted font-normal">${m?.title || p.c}</span></span><span class="text-[10px] font-mono text-muted">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span></label>`;
+          const isBreak = p.c === 'LUNCH' || p.c === 'LIBRARY';
+          const m = isBreak ? null : DATA.courses[p.c];
+          const label = isBreak ? 'Break' : (m?.title || p.name || p.c);
+          const abbr = isBreak ? 'Break' : Utils.getCourseAbbr(p.c);
+          return `<label class="flex items-center gap-2 p-2 rounded-lg bg-surface border border-border cursor-pointer"><input type="checkbox" class="partial-slot-check accent-brand" data-course="${p.c}" data-start="${p.s}" ${checked ? 'checked' : ''}><span class="text-[10px] font-bold text-primary flex-1">${abbr} <span class="text-muted font-normal">${label}</span></span><span class="text-[10px] font-mono text-muted">${Utils.formatMins(p.s)}–${Utils.formatMins(p.e)}</span></label>`;
         }).join('');
       }
       Utils.dom('exam-extra-fields').classList.add('hidden');
