@@ -27,7 +27,7 @@ INSERT INTO public.hostels (id, name, blocks, laundry_days)
 VALUES
   (
     'hostel-einstein',
-    'Einstein Hall (Boys)',
+    'Einstein Hall',
     '["Block A", "Block B", "Block C", "Block D"]'::jsonb,
     '[{"day": 2, "timeSlot": "08:00 AM - 12:00 PM", "description": "Tuesday Morning Drop-off"}, {"day": 5, "timeSlot": "04:00 PM - 08:00 PM", "description": "Friday Evening Collection"}]'::jsonb
   ),

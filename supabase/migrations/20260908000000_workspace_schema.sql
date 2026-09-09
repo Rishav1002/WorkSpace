@@ -243,6 +243,54 @@ CREATE TABLE IF NOT EXISTS public.sync_conflicts (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- BACKWARDS COMPATIBILITY PATCH FOR PRE-EXISTING TABLES
+DO $$ 
+BEGIN
+  -- 1. attendance_records
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'attendance_records') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'attendance_records' AND column_name = 'date') 
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'attendance_records' AND column_name = 'date_str') THEN
+      ALTER TABLE public.attendance_records RENAME COLUMN "date" TO date_str;
+    ELSE
+      ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS date_str DATE;
+    END IF;
+    ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS occurrence_key VARCHAR(128);
+    ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS course_code VARCHAR(32);
+    ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS start_time INT;
+    ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS source VARCHAR(16) DEFAULT 'auto';
+    ALTER TABLE public.attendance_records ADD COLUMN IF NOT EXISTS is_synced BOOLEAN DEFAULT TRUE;
+  END IF;
+
+  -- 2. timetable_overrides
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'timetable_overrides') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'timetable_overrides' AND column_name = 'date') 
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'timetable_overrides' AND column_name = 'date_str') THEN
+      ALTER TABLE public.timetable_overrides RENAME COLUMN "date" TO date_str;
+    ELSE
+      ALTER TABLE public.timetable_overrides ADD COLUMN IF NOT EXISTS date_str DATE;
+    END IF;
+    ALTER TABLE public.timetable_overrides ADD COLUMN IF NOT EXISTS original_slot_id VARCHAR(64);
+    ALTER TABLE public.timetable_overrides ADD COLUMN IF NOT EXISTS scope VARCHAR(32) DEFAULT 'this_occurrence';
+    ALTER TABLE public.timetable_overrides ADD COLUMN IF NOT EXISTS override_type VARCHAR(32) DEFAULT 'reschedule';
+    ALTER TABLE public.timetable_overrides ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+  END IF;
+
+  -- 3. calendar_events
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'calendar_events') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'calendar_events' AND column_name = 'date') 
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'calendar_events' AND column_name = 'date_str') THEN
+      ALTER TABLE public.calendar_events RENAME COLUMN "date" TO date_str;
+    ELSE
+      ALTER TABLE public.calendar_events ADD COLUMN IF NOT EXISTS date_str DATE;
+    END IF;
+    ALTER TABLE public.calendar_events ADD COLUMN IF NOT EXISTS end_date_str DATE;
+    ALTER TABLE public.calendar_events ADD COLUMN IF NOT EXISTS is_official BOOLEAN DEFAULT FALSE;
+    ALTER TABLE public.calendar_events ADD COLUMN IF NOT EXISTS exam_category VARCHAR(32);
+    ALTER TABLE public.calendar_events ADD COLUMN IF NOT EXISTS class_impact VARCHAR(32) DEFAULT 'none';
+    ALTER TABLE public.calendar_events ADD COLUMN IF NOT EXISTS cancelled_slots JSONB;
+  END IF;
+END $$;
+
 -- 14. INDEXES FOR HIGH-PERFORMANCE DASHBOARDS & QUERIES
 CREATE INDEX IF NOT EXISTS idx_user_profiles_gr ON public.user_profiles(gr_number);
 CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON public.attendance_records(user_id, date_str);
@@ -418,7 +466,7 @@ BEGIN
     'MCA DS 1A',
     1,
     '1A',
-    'Einstein Hall (Boys)',
+    'Einstein Hall',
     75,
     '2026-07-29',
     'term-sem-1-2026'
