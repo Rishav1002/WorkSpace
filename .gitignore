@@ -1,34 +1,8 @@
-# Dependencies
 node_modules/
-
-# Build output
-dist/
 build/
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Testing
+dist/
 coverage/
-
-# Misc
-*.tgz
-.cache/
+.DS_Store
+*.log
+.env*
+!.env.example

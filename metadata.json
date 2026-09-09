@@ -1,0 +1,6 @@
+{
+  "name": "WorkSpace",
+  "description": "Personalized academic workspace, timetable, attendance tracker, and campus companion.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
