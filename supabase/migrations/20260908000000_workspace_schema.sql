@@ -466,7 +466,7 @@ BEGIN
     'MCA DS 1A',
     1,
     '1A',
-    'Einstein Hall',
+    'Einstein Hall (Boys)',
     75,
     '2026-07-29',
     'term-sem-1-2026'

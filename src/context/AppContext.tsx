@@ -9,10 +9,12 @@ import {
   NotificationSettings,
   ResolvedClassOccurrence,
   HostelInfo,
-  AuditLogEntry
+  AuditLogEntry,
+  CampusBlock,
+  UserCustomMealDay
 } from '../types';
 import { useAuth } from './AuthContext';
-import { DEFAULT_NOTIF_SETTINGS } from '../lib/storage';
+import { DEFAULT_NOTIF_SETTINGS, Storage } from '../lib/storage';
 import { resolveClassesForDate, calculateAttendanceAnalytics, AttendanceAnalytics } from '../lib/attendanceEngine';
 import { dateToIso, getCurrentMinutes, formatMinutes } from '../lib/timeUtils';
 import { OFFICIAL_TIMETABLE_SLOTS, OFFICIAL_ACADEMIC_CALENDAR, OFFICIAL_HOSTELS } from '../data/masterData';
@@ -68,6 +70,10 @@ interface AppContextType {
   hostels: HostelInfo[];
   selectedHostel: HostelInfo | undefined;
   requestHostelGlobal: (info: { hostelName: string; notes: string; wardenPhone?: string }) => void;
+  campusBlocks: CampusBlock[];
+  updateCampusBlock: (blockNumber: number, customName: string) => void;
+  customMealRoutine: Record<number, UserCustomMealDay>;
+  updateCustomMealDay: (dayMenu: UserCustomMealDay) => void;
 
   // Notifications
   notifications: NotificationItem[];
@@ -112,6 +118,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(OFFICIAL_ACADEMIC_CALENDAR);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [hostels, setHostels] = useState<HostelInfo[]>(OFFICIAL_HOSTELS);
+  const [campusBlocks, setCampusBlocks] = useState<CampusBlock[]>(() => Storage.getCampusBlocks());
+  const [customMealRoutine, setCustomMealRoutine] = useState<Record<number, UserCustomMealDay>>({});
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notifSettings, setNotifSettings] = useState<NotificationSettings>(DEFAULT_NOTIF_SETTINGS);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -223,6 +231,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setNotifications(userNotifs);
           setNotifSettings(userSettings);
           setAuditLogs(logs);
+          setCustomMealRoutine(Storage.getCustomMealRoutine(user.id));
         }
       } else {
         if (!isCancelled) {
@@ -232,6 +241,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setTasks([]);
           setNotifications([]);
           setAuditLogs([]);
+          setCustomMealRoutine({});
         }
       }
 
@@ -550,8 +560,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const selectedHostel = useMemo(() => {
-    return hostels.find(h => h.name === (user?.hostel || 'Einstein Hall (Boys)')) || hostels[0];
+    return hostels.find(h => h.name === (user?.hostel || 'Einstein Hall')) || hostels[0];
   }, [hostels, user?.hostel]);
+
+  const updateCampusBlock = useCallback((blockNumber: number, customName: string) => {
+    const updated = Storage.saveCampusBlock(blockNumber, customName);
+    setCampusBlocks(updated);
+    addToast('Campus Block Updated', `Block ${blockNumber} designated as "${customName.trim() || `Block ${blockNumber}`}".`, 'success');
+  }, [addToast]);
+
+  const updateCustomMealDay = useCallback((dayMenu: UserCustomMealDay) => {
+    if (!user) return;
+    const updated = Storage.saveCustomMealDay(user.id, dayMenu);
+    setCustomMealRoutine(updated);
+    addToast('Meal Routine Saved', 'Personalized meal schedule updated for the day.', 'success');
+  }, [user, addToast]);
 
   const requestHostelGlobal = useCallback(
     (info: { hostelName: string; notes: string; wardenPhone?: string }) => {
@@ -697,6 +720,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         hostels,
         selectedHostel,
         requestHostelGlobal,
+        campusBlocks,
+        updateCampusBlock,
+        customMealRoutine,
+        updateCustomMealDay,
         notifications,
         notifSettings,
         updateNotifSettings,

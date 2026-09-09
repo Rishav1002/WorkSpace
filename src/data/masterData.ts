@@ -462,11 +462,22 @@ export const OFFICIAL_ACADEMIC_CALENDAR: CalendarEvent[] = [
   }
 ];
 
-// Official Hostel Information (Einstein Hall, Ivory, Rosewood, Chanakya, Tagore, Outcampus)
+// Campus Academic Blocks 1 to 7 (Classroom blocks with user-customizable names)
+export const DEFAULT_CAMPUS_BLOCKS = [
+  { id: 'block-1', number: 1, name: 'Block 1 — Computer Science & IT' },
+  { id: 'block-2', number: 2, name: 'Block 2 — Engineering & Technology' },
+  { id: 'block-3', number: 3, name: 'Block 3 — Management Studies' },
+  { id: 'block-4', number: 4, name: 'Block 4 — Sciences & Research' },
+  { id: 'block-5', number: 5, name: 'Block 5 — Mathematical Sciences' },
+  { id: 'block-6', number: 6, name: 'Block 6 — Central Academic Complex' },
+  { id: 'block-7', number: 7, name: 'Block 7 — Computing Laboratories & Innovation Hub' }
+];
+
+// Official Hostel Information (1. Einstein Hall, 2. Tagore Hall, 3. Rosewood Hall, 4. Ivory Hall, 5. Chanakya Hall, and Outside Campus Hostels)
 export const OFFICIAL_HOSTELS: HostelInfo[] = [
   {
     id: 'einstein',
-    name: 'Einstein Hall (Boys)',
+    name: 'Einstein Hall',
     blocks: ['1st to 3rd Floor', '4th to 6th Floor', '7th to 11th Floor'],
     wardens: [
       { id: 'w-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'einstein' },
@@ -481,41 +492,9 @@ export const OFFICIAL_HOSTELS: HostelInfo[] = [
     ]
   },
   {
-    id: 'ivory',
-    name: 'Ivory Hostel',
-    wardens: [
-      { id: 'w-iv-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'ivory' }
-    ],
-    laundryDays: [
-      { day: 2, dayName: 'Tuesday', timeSlot: '4:00 PM to 6:00 PM', description: 'Ivory & Rosewood Drop & Pick' },
-      { day: 5, dayName: 'Friday', timeSlot: '4:00 PM to 6:00 PM', description: 'Ivory & Rosewood Drop & Pick' }
-    ]
-  },
-  {
-    id: 'rosewood',
-    name: 'Rosewood Hostel',
-    wardens: [
-      { id: 'w-rw-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'rosewood' }
-    ],
-    laundryDays: [
-      { day: 2, dayName: 'Tuesday', timeSlot: '4:00 PM to 6:00 PM', description: 'Ivory & Rosewood Drop & Pick' },
-      { day: 5, dayName: 'Friday', timeSlot: '4:00 PM to 6:00 PM', description: 'Ivory & Rosewood Drop & Pick' }
-    ]
-  },
-  {
-    id: 'chanakya',
-    name: 'Chanakya Hostel',
-    wardens: [
-      { id: 'w-ch-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'chanakya' }
-    ],
-    laundryDays: [
-      { day: 3, dayName: 'Wednesday', timeSlot: '4:00 PM to 6:00 PM', description: 'Chanakya & Tagore Drop & Pick' },
-      { day: 6, dayName: 'Saturday', timeSlot: '4:00 PM to 6:00 PM', description: 'Chanakya & Tagore Drop & Pick' }
-    ]
-  },
-  {
     id: 'tagore',
-    name: 'Tagore Hostel',
+    name: 'Tagore Hall',
+    blocks: ['Wing A', 'Wing B', 'Wing C'],
     wardens: [
       { id: 'w-tg-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'tagore' }
     ],
@@ -525,8 +504,45 @@ export const OFFICIAL_HOSTELS: HostelInfo[] = [
     ]
   },
   {
+    id: 'rosewood',
+    name: 'Rosewood Hall',
+    blocks: ['Block 1', 'Block 2', 'Block 3'],
+    wardens: [
+      { id: 'w-rw-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'rosewood' }
+    ],
+    laundryDays: [
+      { day: 2, dayName: 'Tuesday', timeSlot: '4:00 PM to 6:00 PM', description: 'Ivory & Rosewood Drop & Pick' },
+      { day: 5, dayName: 'Friday', timeSlot: '4:00 PM to 6:00 PM', description: 'Ivory & Rosewood Drop & Pick' }
+    ]
+  },
+  {
+    id: 'ivory',
+    name: 'Ivory Hall',
+    blocks: ['North Wing', 'South Wing'],
+    wardens: [
+      { id: 'w-iv-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'ivory' }
+    ],
+    laundryDays: [
+      { day: 2, dayName: 'Tuesday', timeSlot: '4:00 PM to 6:00 PM', description: 'Ivory & Rosewood Drop & Pick' },
+      { day: 5, dayName: 'Friday', timeSlot: '4:00 PM to 6:00 PM', description: 'Ivory & Rosewood Drop & Pick' }
+    ]
+  },
+  {
+    id: 'chanakya',
+    name: 'Chanakya Hall',
+    blocks: ['Block A', 'Block B'],
+    wardens: [
+      { id: 'w-ch-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'chanakya' }
+    ],
+    laundryDays: [
+      { day: 3, dayName: 'Wednesday', timeSlot: '4:00 PM to 6:00 PM', description: 'Chanakya & Tagore Drop & Pick' },
+      { day: 6, dayName: 'Saturday', timeSlot: '4:00 PM to 6:00 PM', description: 'Chanakya & Tagore Drop & Pick' }
+    ]
+  },
+  {
     id: 'outcampus',
-    name: 'Outcampus Hostel',
+    name: 'Outside Campus Hostels',
+    blocks: ['Sector 1 Annex', 'Sector 2 Residency', 'City Apartments'],
     wardens: [
       { id: 'w-out-main', name: 'Warden Office', roleOrFloor: 'Main Desk', phone: '9056764078', hostelId: 'outcampus' }
     ],

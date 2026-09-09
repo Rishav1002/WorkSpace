@@ -28,7 +28,8 @@ export const ScheduleView: React.FC = () => {
     calendarEvents,
     saveTimetableOverride,
     deleteTimetableOverride,
-    restoreOfficialRoutine
+    restoreOfficialRoutine,
+    campusBlocks
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'timeline' | 'grid'>('timeline');
@@ -42,6 +43,20 @@ export const ScheduleView: React.FC = () => {
   const [overrideTeacher, setOverrideTeacher] = useState('');
   const [overrideScope, setOverrideScope] = useState<'this_occurrence' | 'future_recurring'>('this_occurrence');
   const [overrideDate, setOverrideDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  // Form states for adding custom class
+  const [addClassModalOpen, setAddClassModalOpen] = useState(false);
+  const [newClassCourse, setNewClassCourse] = useState('MCA110226');
+  const [newClassDay, setNewClassDay] = useState<number>(() => {
+    const today = new Date().getDay();
+    return today === 1 || today === 2 ? 3 : today;
+  });
+  const [newClassStartTime, setNewClassStartTime] = useState('09:30');
+  const [newClassEndTime, setNewClassEndTime] = useState('10:20');
+  const [newClassRoom, setNewClassRoom] = useState('R512');
+  const [newClassTeacher, setNewClassTeacher] = useState('');
+  const [newClassScope, setNewClassScope] = useState<'this_occurrence' | 'future_recurring'>('future_recurring');
+  const [newClassDate, setNewClassDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const daysMap: Record<number, string> = {
     1: 'Monday',
@@ -107,6 +122,34 @@ export const ScheduleView: React.FC = () => {
 
     setOverrideModalOpen(false);
     setSelectedSlotToOverride(null);
+  };
+
+  const handleSaveNewClass = (e: React.FormEvent) => {
+    e.preventDefault();
+    const startMin = timeStringToMinutes(newClassStartTime);
+    const endMin = timeStringToMinutes(newClassEndTime);
+
+    if (endMin <= startMin) {
+      alert('End time must be after start time');
+      return;
+    }
+
+    saveTimetableOverride({
+      dateStr: newClassScope === 'this_occurrence' ? newClassDate : undefined,
+      effectiveFrom: newClassScope === 'future_recurring' ? newClassDate : undefined,
+      scope: newClassScope,
+      overrideType: 'custom_class',
+      courseCode: newClassCourse,
+      day: newClassDay,
+      startTime: startMin,
+      endTime: endMin,
+      room: newClassRoom,
+      teacher: newClassTeacher,
+      isActive: true
+    });
+
+    setAddClassModalOpen(false);
+    setNewClassTeacher('');
   };
 
   const gridTimeHeaders = [
@@ -222,6 +265,16 @@ export const ScheduleView: React.FC = () => {
               className="w-full bg-surface border border-border rounded-xl pl-8 pr-3 py-2 text-xs text-primary focus:outline-none focus:ring-1 focus:ring-brand font-medium"
             />
           </div>
+
+          {/* ADD CLASS BUTTON */}
+          <button
+            type="button"
+            onClick={() => setAddClassModalOpen(true)}
+            className="px-3 py-1.5 text-xs font-bold text-white bg-brand hover:opacity-90 active:scale-95 rounded-xl transition-all shadow-subtle flex items-center gap-1.5 shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Class</span>
+          </button>
 
           {/* VIEW TOGGLE */}
           <div className="flex bg-surface border border-border rounded-xl p-0.5 font-mono text-[11px] font-bold shadow-subtle shrink-0">
@@ -663,6 +716,203 @@ export const ScheduleView: React.FC = () => {
                   className="px-4 py-2 rounded-xl bg-brand text-white font-bold hover:opacity-90 active:scale-95"
                 >
                   Apply Override
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD CUSTOM CLASS MODAL */}
+      {addClassModalOpen && (
+        <div className="fixed inset-0 z-[130] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card w-full max-w-md bg-surface p-5 shadow-2xl animate-in zoom-in-95 border-border">
+            <div className="flex items-center justify-between pb-3 border-b border-border mb-4">
+              <div>
+                <h4 className="font-display text-base font-bold text-primary">
+                  Add Class to Routine
+                </h4>
+                <p className="text-[11px] font-mono text-muted">
+                  Insert elective, lab session, tutorial, or personalized class
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAddClassModalOpen(false)}
+                className="text-muted hover:text-primary p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveNewClass} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-[10px] font-mono uppercase font-bold text-muted mb-1">
+                  Scope
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewClassScope('future_recurring')}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs transition-all ${
+                      newClassScope === 'future_recurring'
+                        ? 'border-brand bg-brand/10 text-brand'
+                        : 'border-border text-muted hover:bg-surface-hover'
+                    }`}
+                  >
+                    Weekly Recurring
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewClassScope('this_occurrence')}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs transition-all ${
+                      newClassScope === 'this_occurrence'
+                        ? 'border-brand bg-brand/10 text-brand'
+                        : 'border-border text-muted hover:bg-surface-hover'
+                    }`}
+                  >
+                    Single Date Only
+                  </button>
+                </div>
+              </div>
+
+              {newClassScope === 'this_occurrence' ? (
+                <div>
+                  <label className="block text-[10px] font-mono uppercase font-bold text-muted mb-1">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newClassDate}
+                    onChange={e => {
+                      setNewClassDate(e.target.value);
+                      const d = new Date(`${e.target.value}T00:00:00`).getDay();
+                      setNewClassDay(d);
+                    }}
+                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary font-mono"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-[10px] font-mono uppercase font-bold text-muted mb-1">
+                    Day of Week
+                  </label>
+                  <select
+                    value={newClassDay}
+                    onChange={e => setNewClassDay(parseInt(e.target.value, 10))}
+                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary font-mono"
+                  >
+                    <option value={3}>Wednesday</option>
+                    <option value={4}>Thursday</option>
+                    <option value={5}>Friday</option>
+                    <option value={6}>Saturday</option>
+                    <option value={0}>Sunday</option>
+                    <option value={1}>Monday (Academic Off)</option>
+                    <option value={2}>Tuesday (Academic Off)</option>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-mono uppercase font-bold text-muted mb-1">
+                  Subject / Course
+                </label>
+                <select
+                  value={newClassCourse}
+                  onChange={e => setNewClassCourse(e.target.value)}
+                  className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary font-mono"
+                >
+                  {Object.values(OFFICIAL_SUBJECTS).map(c => (
+                    <option key={c.code} value={c.code} title={c.title}>
+                      {COURSE_CODE_SHORTCUTS[c.code] || c.code} — {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase font-bold text-muted mb-1">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={newClassStartTime}
+                    onChange={e => setNewClassStartTime(e.target.value)}
+                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase font-bold text-muted mb-1">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={newClassEndTime}
+                    onChange={e => setNewClassEndTime(e.target.value)}
+                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase font-bold text-muted mb-1">
+                    Room / Campus Block
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    list="campus-blocks-list"
+                    value={newClassRoom}
+                    onChange={e => setNewClassRoom(e.target.value)}
+                    placeholder="e.g. Block 1 - R512"
+                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary font-mono"
+                  />
+                  <datalist id="campus-blocks-list">
+                    {campusBlocks.map(b => (
+                      <option key={b.id} value={`${b.name} - R512`}>
+                        {b.name}
+                      </option>
+                    ))}
+                    <option value="R512" />
+                    <option value="R605" />
+                    <option value="R603" />
+                    <option value="R311" />
+                    <option value="L604" />
+                    <option value="L204" />
+                    <option value="L205" />
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase font-bold text-muted mb-1">
+                    Instructor
+                  </label>
+                  <input
+                    type="text"
+                    value={newClassTeacher}
+                    onChange={e => setNewClassTeacher(e.target.value)}
+                    placeholder="e.g. Dr. Jaspreet Singh"
+                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setAddClassModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-surface-hover text-muted hover:text-primary font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-brand text-white font-bold hover:opacity-90 active:scale-95"
+                >
+                  Add to Routine
                 </button>
               </div>
             </form>

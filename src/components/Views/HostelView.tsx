@@ -11,7 +11,11 @@ import {
   ChevronRight,
   Sparkles,
   Info,
-  X
+  X,
+  Edit2,
+  Plus,
+  RotateCcw,
+  MapPin
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -24,7 +28,15 @@ import {
 import { parseMealPills } from '../../lib/timeUtils';
 
 export const HostelView: React.FC = () => {
-  const { hostels, selectedHostel, requestHostelGlobal } = useApp();
+  const {
+    hostels,
+    selectedHostel,
+    requestHostelGlobal,
+    campusBlocks,
+    updateCampusBlock,
+    customMealRoutine,
+    updateCustomMealDay
+  } = useApp();
   const { user, updateProfile } = useAuth();
 
   const [activeMenuDay, setActiveMenuDay] = useState<number>(() => new Date().getDay());
@@ -33,6 +45,18 @@ export const HostelView: React.FC = () => {
   const [reqHostelName, setReqHostelName] = useState(user?.hostel || 'Einstein Hall (Boys)');
   const [reqNotes, setReqNotes] = useState('');
   const [reqPhone, setReqPhone] = useState('');
+
+  // Personal meal customization state
+  const [customMealModalOpen, setCustomMealModalOpen] = useState(false);
+  const [customBreakfast, setCustomBreakfast] = useState('');
+  const [customLunch, setCustomLunch] = useState('');
+  const [customSnacks, setCustomSnacks] = useState('');
+  const [customDinner, setCustomDinner] = useState('');
+
+  // Campus block naming state
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editingBlockName, setEditingBlockName] = useState('');
+  const [editingBlockRooms, setEditingBlockRooms] = useState('');
 
   const daysList = [
     { num: 1, label: 'Mon' },
@@ -49,6 +73,52 @@ export const HostelView: React.FC = () => {
     scheduleMode === 'regular'
       ? OFFICIAL_MESS_SCHEDULE.regular
       : OFFICIAL_MESS_SCHEDULE.weekendAndHoliday;
+
+  const currentCustomDay = customMealRoutine[activeMenuDay];
+
+  const handleOpenCustomMealModal = () => {
+    setCustomBreakfast(currentCustomDay?.breakfast || currentDayMenu?.breakfast || '');
+    setCustomLunch(currentCustomDay?.lunch || currentDayMenu?.lunch || '');
+    setCustomSnacks(currentCustomDay?.snacks || currentDayMenu?.snacks || '');
+    setCustomDinner(currentCustomDay?.dinner || currentDayMenu?.dinner || '');
+    setCustomMealModalOpen(true);
+  };
+
+  const handleSaveCustomMeal = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateCustomMealDay({
+      day: activeMenuDay,
+      breakfast: customBreakfast.trim(),
+      lunch: customLunch.trim(),
+      snacks: customSnacks.trim(),
+      dinner: customDinner.trim(),
+      updatedAt: new Date().toISOString()
+    });
+    setCustomMealModalOpen(false);
+  };
+
+  const handleResetCustomMeal = () => {
+    updateCustomMealDay({
+      day: activeMenuDay,
+      breakfast: currentDayMenu.breakfast,
+      lunch: currentDayMenu.lunch,
+      snacks: currentDayMenu.snacks,
+      dinner: currentDayMenu.dinner,
+      updatedAt: new Date().toISOString()
+    });
+    setCustomMealModalOpen(false);
+  };
+
+  const handleStartEditBlock = (b: { id: string; number: number; name: string }) => {
+    setEditingBlockId(b.id);
+    setEditingBlockName(b.name);
+  };
+
+  const handleSaveBlock = (blockNumber: number) => {
+    if (!editingBlockName.trim()) return;
+    updateCampusBlock(blockNumber, editingBlockName.trim());
+    setEditingBlockId(null);
+  };
 
   const handleGlobalSubmit = (e: React.FormEvent) => {
     e.preventDefault();

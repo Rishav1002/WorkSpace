@@ -194,6 +194,23 @@ export interface HostelInfo {
   }[];
 }
 
+export interface CampusBlock {
+  id: string; // e.g., 'block-1'
+  number: number; // 1 to 7
+  name: string; // user customizable label, e.g. 'Science & Computing Block'
+  isUserCustom?: boolean;
+}
+
+export interface UserCustomMealDay {
+  day: number; // 0=Sun, 1=Mon, ..., 6=Sat
+  breakfast?: string;
+  lunch?: string;
+  snacks?: string;
+  dinner?: string;
+  dessert?: string;
+  updatedAt: string;
+}
+
 export interface WardenContact {
   id: string;
   name: string;

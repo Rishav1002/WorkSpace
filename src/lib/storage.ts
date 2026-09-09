@@ -9,12 +9,15 @@ import {
   NotificationSettings,
   DeviceSession,
   AuditLogEntry,
-  HostelInfo
+  HostelInfo,
+  CampusBlock,
+  UserCustomMealDay
 } from '../types';
 import {
   OFFICIAL_TIMETABLE_SLOTS,
   OFFICIAL_ACADEMIC_CALENDAR,
-  OFFICIAL_HOSTELS
+  OFFICIAL_HOSTELS,
+  DEFAULT_CAMPUS_BLOCKS
 } from '../data/masterData';
 import { generateGR118748HistoricalAttendance } from '../data/gr118748Attendance';
 
@@ -31,6 +34,8 @@ const STORAGE_KEYS = {
   NOTIF_SETTINGS: 'workspace_notif_settings',
   AUDIT_LOGS: 'workspace_audit_logs',
   HOSTEL_DATA: 'workspace_hostel_data',
+  CAMPUS_BLOCKS: 'workspace_campus_blocks',
+  CUSTOM_MEAL_ROUTINE: 'workspace_custom_meal_routine',
   PENDING_MUTATIONS: 'workspace_pending_sync_queue'
 };
 
@@ -317,6 +322,44 @@ class StorageRepository {
     ]);
 
     return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+  }
+
+  // --- CAMPUS BLOCKS 1 to 7 ---
+  getCampusBlocks(): CampusBlock[] {
+    return this.getItem<CampusBlock[]>(STORAGE_KEYS.CAMPUS_BLOCKS, DEFAULT_CAMPUS_BLOCKS);
+  }
+
+  saveCampusBlock(blockNumber: number, customName: string): CampusBlock[] {
+    const blocks = this.getCampusBlocks();
+    const updated = blocks.map(b => {
+      if (b.number === blockNumber) {
+        return { ...b, name: customName.trim() || `Block ${blockNumber}`, isUserCustom: true };
+      }
+      return b;
+    });
+    this.setItem(STORAGE_KEYS.CAMPUS_BLOCKS, updated);
+    return updated;
+  }
+
+  // --- USER CUSTOM MEAL ROUTINE ---
+  getCustomMealRoutine(userId: string): Record<number, UserCustomMealDay> {
+    const all = this.getItem<Record<string, Record<number, UserCustomMealDay>>>(
+      STORAGE_KEYS.CUSTOM_MEAL_ROUTINE,
+      {}
+    );
+    return all[userId] || {};
+  }
+
+  saveCustomMealDay(userId: string, dayMenu: UserCustomMealDay): Record<number, UserCustomMealDay> {
+    const all = this.getItem<Record<string, Record<number, UserCustomMealDay>>>(
+      STORAGE_KEYS.CUSTOM_MEAL_ROUTINE,
+      {}
+    );
+    const userMenu = all[userId] || {};
+    userMenu[dayMenu.day] = dayMenu;
+    all[userId] = userMenu;
+    this.setItem(STORAGE_KEYS.CUSTOM_MEAL_ROUTINE, all);
+    return userMenu;
   }
 }
 
