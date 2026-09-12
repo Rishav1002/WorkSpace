@@ -420,7 +420,6 @@ export class AuthRepository {
       attendance_target: user.attendanceTarget,
       class_start_date: user.classStartDate,
       active_term_id: user.activeTermId,
-      recovery_configured: user.recoveryConfigured ?? false,
       recovery_pin_hash: user.recoveryPinHash,
       scheduled_deletion_at: user.scheduledDeletionAt,
       updated_at: new Date().toISOString()

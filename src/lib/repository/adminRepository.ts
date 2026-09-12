@@ -93,10 +93,11 @@ export class AdminRepository {
             name: payload.name,
             is_official: true,
             group: payload.group,
-            program: payload.program,
-            semester: payload.semester,
-            section: payload.section,
-            term_id: payload.termId,
+            program: payload.program || 'MCA',
+            semester: payload.semester || 1,
+            section: payload.section || '1A',
+            term_id: payload.termId || payload.activeTermId || 'term-sem-1-2026',
+            active_term_id: payload.activeTermId || payload.termId || 'term-sem-1-2026',
             effective_from: effectiveDate
           });
         }
@@ -186,6 +187,11 @@ export class AdminRepository {
               name: previousValue.name,
               is_official: true,
               group: previousValue.group,
+              program: previousValue.program || 'MCA',
+              semester: previousValue.semester || 1,
+              section: previousValue.section || '1A',
+              term_id: previousValue.termId || previousValue.activeTermId || 'term-sem-1-2026',
+              active_term_id: previousValue.activeTermId || previousValue.termId || 'term-sem-1-2026',
               effective_from: previousValue.effectiveFrom
             });
           }

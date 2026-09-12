@@ -88,10 +88,10 @@ export class TimetableRepository {
             name: r.name,
             isOfficial: r.is_official,
             group: r.group,
-            program: r.program,
-            semester: r.semester,
-            section: r.section,
-            termId: r.term_id,
+            program: r.program || 'MCA',
+            semester: r.semester || 1,
+            section: r.section || '1A',
+            termId: r.term_id || r.active_term_id || 'term-sem-1-2026',
             effectiveFrom: r.effective_from,
             effectiveUntil: r.effective_until
           }));

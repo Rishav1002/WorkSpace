@@ -401,7 +401,6 @@ class SyncRepository {
           attendance_target: payload.attendanceTarget,
           class_start_date: payload.classStartDate,
           active_term_id: payload.activeTermId,
-          recovery_configured: payload.recoveryConfigured ?? false,
           recovery_pin_hash: payload.recoveryPinHash,
           scheduled_deletion_at: payload.scheduledDeletionAt,
           updated_at: new Date().toISOString()
@@ -411,19 +410,31 @@ class SyncRepository {
 
       case 'audit_log': {
         const payload = item.payload;
-        const { error } = await supabase.from('audit_logs').insert({
-          id: payload.id,
-          actor_gr: payload.actorGr,
-          timestamp: payload.timestamp || new Date().toISOString(),
-          entity: payload.entity,
-          entity_id: payload.entityId,
-          change_type: payload.changeType,
-          previous_value: payload.previousValue,
-          new_value: payload.newValue,
-          scope: payload.scope || 'master',
-          effective_date: payload.effectiveDate || new Date().toISOString()
-        });
-        return error ? { status: 'ERROR', error: error.message } : { status: 'SUCCESS' };
+        // The secure server-side RPC record_audit_log is mandatory for all administrative audit writes
+        try {
+          const { error: rpcError } = await supabase.rpc('record_audit_log', {
+            p_entity: payload.entity,
+            p_entity_id: payload.entityId,
+            p_change_type: payload.changeType,
+            p_previous_value: payload.previousValue || null,
+            p_new_value: payload.newValue || null,
+            p_scope: payload.scope || 'master',
+            p_effective_date: payload.effectiveDate || new Date().toISOString().split('T')[0]
+          });
+
+          if (rpcError) {
+            return {
+              status: 'ERROR',
+              error: `Audit log write failed: ${rpcError.message}. (record_audit_log RPC required).`
+            };
+          }
+          return { status: 'SUCCESS' };
+        } catch (err) {
+          return {
+            status: 'ERROR',
+            error: `Failed to execute record_audit_log RPC: ${err instanceof Error ? err.message : String(err)}`
+          };
+        }
       }
 
       case 'notification_settings': {
